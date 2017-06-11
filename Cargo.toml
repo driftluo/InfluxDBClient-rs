@@ -1,0 +1,7 @@
+[package]
+name = "influx_db_client"
+version = "0.1.0"
+authors = ["piaoliu <441594700@qq.com>"]
+
+[dependencies]
+hyper = "*"
