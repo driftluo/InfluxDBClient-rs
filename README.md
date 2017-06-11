@@ -28,6 +28,6 @@ This is the [API Document](https://docs.influxdata.com/influxdb/v1.2/tools/api/)
 
 ## Thanks
 
-Because influent seems to have no longer updated, influxdb only support to the 0.9 version, I read influent.rs and influxdb-python source, and then try to write a library for 1.0+ version for support for my own use
+Because [**influent**](https://github.com/gobwas/influent.rs) seems to have no longer updated, and only support to the 0.9 version. I read **influent.rs** and [**influxdb-python**](https://github.com/influxdata/influxdb-python) source, and then try to write a library for 1.0+ version for support for my own use
 
 I have tested it in version 1.0.2.
