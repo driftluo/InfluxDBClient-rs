@@ -10,15 +10,24 @@ This is an InfluxDB driver for Rust.
 ```
 extern crate influx_db_client;
 
-use influx_db_client::{InfluxdbClient, Point, Points, Value, InfluxClient};
+use influx_db_client::{InfluxdbClient, Point, Points, Value, InfluxClient, Precision};
 
 fn main() {
     let client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
-    let mut point = Point::new("test_measurement");
-    point.add_field("field", Value::String("Hello".to_string());
-    let points = Points::new(point);
-    let res = client.write_points(points).unwrap();
+    let mut point = Point::new("test");
+    point.add_field("somefield", Value::Integer(65));
+
+    let mut point1 = Point::new("test2");
+    point1.add_field("somefield", Value::Float(12.2));
+    point1.add_tag("sometag", Value::Boolean(false));
+
+    let mut points = Points::new(point);
+    points.push(point1);
+
+    // if Precision is None, the default is second
+    let res = client.write_points(points, Some(Precision::Microseconds)).unwrap();
     let version = client.get_version().unwrap();
+    println!("{}\nversion:{}", res, version)
 }
 ```
 

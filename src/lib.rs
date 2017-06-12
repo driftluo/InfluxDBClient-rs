@@ -3,11 +3,49 @@ extern crate hyper;
 use hyper::client::Client;
 use hyper::Url;
 use std::collections::BTreeMap;
+use std::io::Read;
 
-pub trait InfluxClient {
-    fn ping(&self) -> bool;
-    fn get_version(&self) -> Option<String>;
-    fn write_points(&self, Points) -> Result<bool, String>;
+
+pub enum Value {
+    String(String),
+    Float(f64),
+    Integer(i64),
+    Boolean(bool)
+}
+
+pub struct Point {
+    pub measurement: String,
+    pub tags: BTreeMap<String, Value>,
+    pub fields: BTreeMap<String, Value>,
+    pub timestamp: Option<i64>
+}
+
+pub struct Points {
+    pub point: Vec<Point>
+}
+
+pub enum Precision {
+    Nanoseconds,
+    Microseconds,
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours
+}
+
+impl ToString for Precision {
+    fn to_string(&self) -> String {
+        let s = match *self {
+            Precision::Nanoseconds => "n",
+            Precision::Microseconds => "u",
+            Precision::Milliseconds => "ms",
+            Precision::Seconds => "s",
+            Precision::Minutes => "m",
+            Precision::Hours => "h"
+        };
+
+        s.to_string()
+    }
 }
 
 pub struct InfluxdbClient<'a> {
@@ -15,6 +53,13 @@ pub struct InfluxdbClient<'a> {
     db: &'a str,
     username: &'a str,
     passwd: &'a str,
+}
+
+pub trait InfluxClient {
+    fn ping(&self) -> bool;
+    fn get_version(&self) -> Option<String>;
+    fn write_point(&self, Point, Option<Precision>) -> Result<bool, String>;
+    fn write_points(&self, Points, Option<Precision>) -> Result<bool, String>;
 }
 
 impl<'a> InfluxdbClient<'a> {
@@ -54,7 +99,12 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         }
     }
 
-    fn write_points(&self, points: Points) -> Result<bool, String> {
+    fn write_point(&self, point: Point, precision: Option<Precision>) -> Result<bool, String> {
+        let points = Points::new(point);
+        self.write_points(points, precision)
+    }
+
+    fn write_points(&self, points: Points, precision: Option<Precision>) -> Result<bool, String> {
         let mut line = Vec::new();
         for point in points.point {
             line.push(point.measurement);
@@ -63,7 +113,13 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
                 line.push(",".to_string());
                 line.push(tag.to_string());
                 line.push("=".to_string());
-                line.push(value.to_string());
+
+                match value {
+                    &Value::String(ref s) => line.push(s.to_string()),
+                    &Value::Float(ref f) => line.push(f.to_string()),
+                    &Value::Integer(ref i) => line.push(i.to_string()),
+                    &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
+                }
             }
 
             let mut was_first = true;
@@ -99,38 +155,34 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
 
         let line = line.join("");
 
+        let precision = match precision {
+            Some(t) => t.to_string(),
+            None => Precision::Seconds.to_string(),
+        };
+
         let cleint = Client::new();
         let url = Url::parse(self.host).unwrap();
         let url = url.join("write").unwrap();
-        let url = Url::parse_with_params(url.as_str(), &[("db", self.db), ("u", self.username), ("p", self.passwd)]).unwrap();
+        let url = Url::parse_with_params(url.as_str(), &[("db", self.db), ("u", self.username), ("p", self.passwd), ("precision", &precision)]).unwrap();
 
-        let res = cleint.post(url).body(&line).send().unwrap();
+        let mut res = cleint.post(url).body(&line).send().unwrap();
+        let mut err = String::new();
+        let _ = res.read_to_string(&mut err);
+
         match res.status_raw().0 {
             204 => Ok(true),
-            _ => Err("there is something wrong".to_string())
+            400 => Err(err),
+            401 => Err("Invalid authentication credentials.".to_string()),
+            404 => Err(err),
+            500 => Err(err),
+            _ => Err("There is something wrong".to_string())
         }
     }
 }
 
-#[allow(dead_code)]
-pub enum Value {
-    String(String),
-    Float(f64),
-    Integer(i64),
-    Boolean(bool)
-}
-
-#[allow(dead_code)]
-pub struct Point {
-    pub measurement: String,
-    pub tags: BTreeMap<String, String>,
-    pub fields: BTreeMap<String, Value>,
-    pub timestamp: Option<i64>
-}
-
 impl Point {
     pub fn new(measurement: &str) -> Point {
-        Point{
+        Point {
             measurement: String::from(measurement),
             tags: BTreeMap::new(),
             fields: BTreeMap::new(),
@@ -138,8 +190,8 @@ impl Point {
         }
     }
 
-    pub fn add_tag(&mut self, tag: &str, value: &str) {
-        self.tags.insert(tag.to_string(), value.to_string());
+    pub fn add_tag(&mut self, tag: &str, value: Value) {
+        self.tags.insert(tag.to_string(), value);
     }
 
     pub fn add_field(&mut self, field: &str, value: Value) {
@@ -151,16 +203,16 @@ impl Point {
     }
 }
 
-pub struct Points {
-    pub point: Vec<Point>
-}
-
 impl Points {
     pub fn new(point: Point) -> Points {
         let mut points = Vec::new();
         points.push(point);
-        Points{
+        Points {
             point: points,
         }
+    }
+
+    pub fn push(&mut self, point: Point) {
+        self.point.push(point)
     }
 }
