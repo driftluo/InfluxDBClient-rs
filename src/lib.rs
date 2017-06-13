@@ -33,18 +33,20 @@ pub enum Precision {
     Hours
 }
 
-impl ToString for Precision {
-    fn to_string(&self) -> String {
-        let s = match *self {
+trait Tostr {
+    fn to_str(&self) -> &str;
+}
+
+impl Tostr for Precision {
+    fn to_str(&self) -> &str {
+        match *self {
             Precision::Nanoseconds => "n",
             Precision::Microseconds => "u",
             Precision::Milliseconds => "ms",
             Precision::Seconds => "s",
             Precision::Minutes => "m",
             Precision::Hours => "h"
-        };
-
-        s.to_string()
+        }
     }
 }
 
@@ -58,8 +60,8 @@ pub struct InfluxdbClient<'a> {
 pub trait InfluxClient {
     fn ping(&self) -> bool;
     fn get_version(&self) -> Option<String>;
-    fn write_point(&self, Point, Option<Precision>) -> Result<bool, String>;
-    fn write_points(&self, Points, Option<Precision>) -> Result<bool, String>;
+    fn write_point(&self, Point, Option<Precision>, Option<&str>) -> Result<bool, String>;
+    fn write_points(&self, Points, Option<Precision>, Option<&str>) -> Result<bool, String>;
 }
 
 impl<'a> InfluxdbClient<'a> {
@@ -99,12 +101,12 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         }
     }
 
-    fn write_point(&self, point: Point, precision: Option<Precision>) -> Result<bool, String> {
+    fn write_point(&self, point: Point, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, String> {
         let points = Points::new(point);
-        self.write_points(points, precision)
+        self.write_points(points, precision, rp)
     }
 
-    fn write_points(&self, points: Points, precision: Option<Precision>) -> Result<bool, String> {
+    fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, String> {
         let mut line = Vec::new();
         for point in points.point {
             line.push(point.measurement);
@@ -155,15 +157,22 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
 
         let line = line.join("");
 
-        let precision = match precision {
-            Some(t) => t.to_string(),
-            None => Precision::Seconds.to_string(),
+        let mut param = vec![("db", self.db), ("u", self.username), ("p", self.passwd)];
+
+        match precision {
+            Some(ref t) => param.push(("precision", t.to_str())),
+            None => param.push(("precision", "s")),
+        };
+
+        match rp {
+            Some(t) => param.push(("rp", t)),
+            None => (),
         };
 
         let cleint = Client::new();
         let url = Url::parse(self.host).unwrap();
         let url = url.join("write").unwrap();
-        let url = Url::parse_with_params(url.as_str(), &[("db", self.db), ("u", self.username), ("p", self.passwd), ("precision", &precision)]).unwrap();
+        let url = Url::parse_with_params(url.as_str(), &param).unwrap();
 
         let mut res = cleint.post(url).body(&line).send().unwrap();
         let mut err = String::new();
