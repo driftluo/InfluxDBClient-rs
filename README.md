@@ -13,7 +13,7 @@ This project is being developed in high speed.
 
 - [x] Multiple write and single write.
 - [x] Get the version number and check if the database exists.
-- [ ] Support query syntax.
+- [x] Support query syntax.
 
 ## Usage
 
@@ -23,7 +23,10 @@ extern crate influx_db_client;
 use influx_db_client::{InfluxdbClient, Point, Points, Value, InfluxClient, Precision};
 
 fn main() {
-    let client = InfluxdbClient::new("http://localhost:8086", "test_db", "username", "passwd");
+    let mut client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
+    client.set_write_timeout(10);
+    client.set_read_timeout(10);
+
     let mut point = Point::new("test");
     point.add_field("somefield", Value::Integer(65));
 
@@ -35,9 +38,14 @@ fn main() {
     points.push(point1);
 
     // if Precision is None, the default is second
+    // Multiple write
     let res = client.write_points(points, Some(Precision::Microseconds), None).unwrap();
     let version = client.get_version().unwrap();
     println!("{}\nversion:{}", res, version)
+
+    // query
+    let res = client.query("select * from test", None).unwrap();
+    println!("{:?}", res.get("results").unwrap()[0].get("series").unwrap()[0].get("values"))
 }
 ```
 
