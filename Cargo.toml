@@ -11,3 +11,4 @@ license = "MIT"
 
 [dependencies]
 hyper = "*"
+serde_json = '*'
