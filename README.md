@@ -14,6 +14,8 @@ This project is being developed in high speed.
 - [x] Multiple write and single write.
 - [x] Get the version number and check if the database exists.
 - [x] Support query syntax.
+- [ ] Support query post syntax.
+- [ ] Add some easy-to-use functions.
 
 ## Usage
 

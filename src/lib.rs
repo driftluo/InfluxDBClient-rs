@@ -46,7 +46,7 @@ use std::time::Duration;
 
 pub mod serialization;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     String(String),
     Float(f64),
@@ -54,7 +54,7 @@ pub enum Value {
     Boolean(bool)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Point {
     pub measurement: String,
     pub tags: BTreeMap<String, Value>,
@@ -277,7 +277,15 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let url = url.join("query").unwrap();
         let url = Url::parse_with_params(url.as_str(), &param).unwrap();
 
-        let mut res = client.get(url).send().unwrap();
+        let q_lower = q.to_lowercase();
+        let mut res = {
+            if &q_lower.contains("select") && !&q_lower.contains("into") || &q_lower.contains("show") {
+                client.get(url).send().unwrap()
+            } else {
+                client.post(url).send().unwrap()
+            }
+        };
+
         let mut context = String::new();
         let _ = res.read_to_string(&mut context);
 
@@ -336,7 +344,7 @@ impl Points {
 
     /// Create a multi Points more directly
     pub fn create_new(points: Vec<Point>) -> Points {
-        Points{
+        Points {
             point: points
         }
     }
