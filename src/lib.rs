@@ -163,12 +163,23 @@ impl<'a> InfluxdbClient<'a> {
 
     /// Set the read timeout value
     pub fn set_read_timeout(&mut self, timeout: u64) {
-        self.read_timeout = Some(timeout)
+        self.read_timeout = Some(timeout);
     }
 
     /// Set the write timeout value
     pub fn set_write_timeout(&mut self, timeout: u64) {
-        self.write_timeout = Some(timeout)
+        self.write_timeout = Some(timeout);
+    }
+
+    /// Change the client's database
+    pub fn swith_database(&mut self, database: &'a str) {
+        self.db = database;
+    }
+
+    /// Change the client's user
+    pub fn swith_user(&mut self, user: &'a str, passwd: &'a str) {
+        self.username = user;
+        self.passwd = passwd;
     }
 }
 
@@ -279,7 +290,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
 
         let q_lower = q.to_lowercase();
         let mut res = {
-            if &q_lower.contains("select") && !&q_lower.contains("into") || &q_lower.contains("show") {
+            if q_lower.contains("select") && !q_lower.contains("into") || q_lower.contains("show") {
                 client.get(url).send().unwrap()
             } else {
                 client.post(url).send().unwrap()
