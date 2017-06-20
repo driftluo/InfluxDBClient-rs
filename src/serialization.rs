@@ -52,3 +52,11 @@ pub fn line_serialization(points: Points) -> String {
 
     line.join("")
 }
+
+pub fn quote_ident(value: &str) -> String {
+    format!("\"{}\"", value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
+}
+
+pub fn quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace("\\", "\\\\").replace("'", "\\'"))
+}

@@ -46,7 +46,7 @@ use std::time::Duration;
 
 pub mod serialization;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     String(String),
     Float(f64),
@@ -54,7 +54,7 @@ pub enum Value {
     Boolean(bool)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Point {
     pub measurement: String,
     pub tags: BTreeMap<String, Value>,
@@ -146,6 +146,37 @@ pub trait InfluxClient {
     /// println!("{:?}", res.get("results").unwrap()[0].get("series").unwrap()[0].get("values"));
     /// ```
     fn query(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, String>;
+
+    /// Create a new database in InfluxDB.
+    fn create_database(&self, dbname: &str) -> String;
+
+    /// Drop a database from InfluxDB.
+    fn drop_database(&self, dbname: &str) -> String;
+
+    /// Create a new user in InfluxDB.
+    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> String;
+
+    /// Drop a user from InfluxDB.
+    fn drop_user(&self, user: &str) -> String;
+
+    /// Change the password of an existing user.
+    fn set_user_password(&self, user: &str, passwd: &str) -> String;
+
+    /// Grant cluster administration privileges to a user.
+    fn grant_admin_privileges(&self, user: &str) -> String;
+
+    /// Revoke cluster administration privileges from a user.
+    fn revoke_admin_privileges(&self, user: &str) -> String;
+
+    /// Grant a privilege on a database to a user.
+    /// :param privilege: the privilege to grant, one of 'read', 'write'
+    /// or 'all'. The string is case-insensitive
+    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> String;
+
+    /// Revoke a privilege on a database from a user.
+    /// :param privilege: the privilege to grant, one of 'read', 'write'
+    /// or 'all'. The string is case-insensitive
+    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> String;
 }
 
 impl<'a> InfluxdbClient<'a> {
@@ -163,12 +194,23 @@ impl<'a> InfluxdbClient<'a> {
 
     /// Set the read timeout value
     pub fn set_read_timeout(&mut self, timeout: u64) {
-        self.read_timeout = Some(timeout)
+        self.read_timeout = Some(timeout);
     }
 
     /// Set the write timeout value
     pub fn set_write_timeout(&mut self, timeout: u64) {
-        self.write_timeout = Some(timeout)
+        self.write_timeout = Some(timeout);
+    }
+
+    /// Change the client's database
+    pub fn swith_database(&mut self, database: &'a str) {
+        self.db = database;
+    }
+
+    /// Change the client's user
+    pub fn swith_user(&mut self, user: &'a str, passwd: &'a str) {
+        self.username = user;
+        self.passwd = passwd;
     }
 }
 
@@ -277,7 +319,15 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let url = url.join("query").unwrap();
         let url = Url::parse_with_params(url.as_str(), &param).unwrap();
 
-        let mut res = client.get(url).send().unwrap();
+        let q_lower = q.to_lowercase();
+        let mut res = {
+            if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
+                client.get(url).send().unwrap()
+            } else {
+                client.post(url).send().unwrap()
+            }
+        };
+
         let mut context = String::new();
         let _ = res.read_to_string(&mut context);
 
@@ -289,6 +339,102 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             401 => Err("Invalid authentication credentials.".to_string()),
             _ => Err("There is something wrong".to_string())
         }
+    }
+
+    /// Create a new database in InfluxDB.
+    fn create_database(&self, dbname: &str) -> String {
+        let sql = format!("Create database {}", serialization::quote_ident(dbname));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Drop a database from InfluxDB.
+    fn drop_database(&self, dbname: &str) -> String {
+        let sql = format!("Drop database {}", serialization::quote_ident(dbname));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Create a new user in InfluxDB.
+    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> String {
+        let sql: String = {
+            if admin {
+                format!("Create user {0} with password {1} with all privileges",
+                        serialization::quote_ident(user), serialization::quote_literal(passwd))
+            } else {
+                format!("Create user {0} WITH password {1}", serialization::quote_ident(user),
+                        serialization::quote_literal(passwd))
+            }
+        };
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Drop a user from InfluxDB.
+    fn drop_user(&self, user: &str) -> String {
+        let sql = format!("Drop user {}", serialization::quote_ident(user));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Change the password of an existing user.
+    fn set_user_password(&self, user: &str, passwd: &str) -> String {
+        let sql = format!("Set password for {}={}", serialization::quote_ident(user),
+                          serialization::quote_literal(passwd));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Grant cluster administration privileges to a user.
+    fn grant_admin_privileges(&self, user: &str) -> String {
+        let sql = format!("Grant all privileges to {}", serialization::quote_ident(user));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Revoke cluster administration privileges from a user.
+    fn revoke_admin_privileges(&self, user: &str) -> String {
+        let sql = format!("Revoke all privileges from {}", serialization::quote_ident(user));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Grant a privilege on a database to a user.
+    /// :param privilege: the privilege to grant, one of 'read', 'write'
+    /// or 'all'. The string is case-insensitive
+    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> String {
+        let sql = format!("Grant {} on {} to {}", privilege, serialization::quote_ident(db),
+                          serialization::quote_ident(user));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Revoke a privilege on a database from a user.
+    /// :param privilege: the privilege to grant, one of 'read', 'write'
+    /// or 'all'. The string is case-insensitive
+    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> String {
+        let sql = format!("Revoke {0} on {1} from {2}", privilege, serialization::quote_ident(db),
+                          serialization::quote_ident(user));
+
+        if let Err(err) = self.query(&sql, None) {
+            err
+        } else { String::from("0") }
     }
 }
 
@@ -336,7 +482,7 @@ impl Points {
 
     /// Create a multi Points more directly
     pub fn create_new(points: Vec<Point>) -> Points {
-        Points{
+        Points {
             point: points
         }
     }
