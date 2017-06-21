@@ -7,15 +7,17 @@ This is an InfluxDB driver for Rust.
 
 ## Status
 
-This project is being developed in high speed.
+This project has been able to run properly,
+most of the problems still on the type of return value,
+I have no solution to this problem, PR are welcome.
 
 ### Todo
 
 - [x] Multiple write and single write.
 - [x] Get the version number and check if the database exists.
 - [x] Support query syntax.
-- [ ] Support query post syntax.
-- [ ] Add some easy-to-use functions.
+- [x] Support query post syntax.
+- [x] Add some easy-to-use functions.
 
 ## Usage
 
@@ -47,7 +49,7 @@ fn main() {
 
     // query
     let res = client.query("select * from test", None).unwrap();
-    println!("{:?}", res.get("results").unwrap()[0].get("series").unwrap()[0].get("values"))
+    println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
 }
 ```
 

@@ -53,10 +53,39 @@ pub fn line_serialization(points: Points) -> String {
     line.join("")
 }
 
+#[inline]
 pub fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
 }
 
+#[inline]
 pub fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace("\\", "\\\\").replace("'", "\\'"))
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ::{Point, Points};
+
+    #[test]
+    fn line_serialization_test() {
+        let mut point = Point::new("test");
+        point.add_field("somefield", Value::Integer(65));
+        point.add_tag("sometag", Value::Boolean(false));
+        let points = Points::new(point);
+
+        assert_eq!(line_serialization(points), "test,sometag=false somefield=65\n")
+    }
+
+    #[test]
+    fn quote_ident_test() {
+        assert_eq!(quote_ident("root"), "\"root\"")
+    }
+
+    #[test]
+    fn quote_literal_test(){
+        assert_eq!(quote_literal("root"), "\'root\'")
+    }
 }
