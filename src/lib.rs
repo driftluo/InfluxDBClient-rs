@@ -32,7 +32,7 @@
 //!
 //!     // query
 //!     let res = client.query("select * from test", None).unwrap();
-//!     println!("{:?}", res.get("results").unwrap()[0].get("series").unwrap()[0].get("values"))
+//!     println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
 //! }
 //! ```
 extern crate hyper;
@@ -138,14 +138,14 @@ pub trait InfluxClient {
     /// ```
     fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, String>;
 
-    /// Query and return data, the data type is `serde_json::Value`
+    /// Query and return data, the data type is `Vec<serde_json::Value>`, such as "show, select"
     ///
     /// ```Rust
     /// let client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
     /// let res = client.query("select * from test", None).unwrap();
-    /// println!("{:?}", res.get("results").unwrap()[0].get("series").unwrap()[0].get("values"));
+    /// println!("{:?}", res[0].get("series").unwrap()[0].get("values"));
     /// ```
-    fn query(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, String>;
+    fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, String>;
 
     /// Create a new database in InfluxDB.
     fn create_database(&self, dbname: &str) -> String;
@@ -177,6 +177,17 @@ pub trait InfluxClient {
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
     fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> String;
+
+    /// Create a retention policy for a database.
+    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> String;
+
+    /// Drop an existing retention policy for a database.
+    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> String;
+}
+
+trait Query {
+    /// Query and return to the native json structure
+    fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, String>;
 }
 
 impl<'a> InfluxdbClient<'a> {
@@ -211,6 +222,55 @@ impl<'a> InfluxdbClient<'a> {
     pub fn swith_user(&mut self, user: &'a str, passwd: &'a str) {
         self.username = user;
         self.passwd = passwd;
+    }
+}
+
+impl<'a> Query for InfluxdbClient<'a> {
+    /// Query and return to the native json structure
+    fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, String> {
+        let mut param = vec![("db", self.db), ("u", self.username), ("p", self.passwd), ("q", q)];
+
+        match epoch {
+            Some(ref t) => param.push(("epoch", t.to_str())),
+            None => ()
+        }
+
+        let mut client = Client::new();
+
+        match self.read_timeout {
+            Some(t) => client.set_read_timeout(Some(Duration::new(t, 0))),
+            None => ()
+        }
+
+        match self.write_timeout {
+            Some(t) => client.set_write_timeout(Some(Duration::new(t, 0))),
+            None => ()
+        }
+
+        let url = Url::parse(self.host).unwrap();
+        let url = url.join("query").unwrap();
+        let url = Url::parse_with_params(url.as_str(), &param).unwrap();
+
+        let q_lower = q.to_lowercase();
+        let mut res = {
+            if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
+                client.get(url).send().unwrap()
+            } else {
+                client.post(url).send().unwrap()
+            }
+        };
+
+        let mut context = String::new();
+        let _ = res.read_to_string(&mut context);
+
+        let json_data = serde_json::from_str(&context).unwrap();
+
+        match res.status_raw().0 {
+            200 => Ok(json_data),
+            400 => Err(json_data.get("error").unwrap().to_string()),
+            401 => Err("Invalid authentication credentials.".to_string()),
+            _ => Err("There is something wrong".to_string())
+        }
     }
 }
 
@@ -294,50 +354,11 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         }
     }
 
-    /// Query and return data, the data type is `serde_json::Value`
-    fn query(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, String> {
-        let mut param = vec![("db", self.db), ("u", self.username), ("p", self.passwd), ("q", q)];
-
-        match epoch {
-            Some(ref t) => param.push(("epoch", t.to_str())),
-            None => ()
-        }
-
-        let mut client = Client::new();
-
-        match self.read_timeout {
-            Some(t) => client.set_read_timeout(Some(Duration::new(t, 0))),
-            None => ()
-        }
-
-        match self.write_timeout {
-            Some(t) => client.set_write_timeout(Some(Duration::new(t, 0))),
-            None => ()
-        }
-
-        let url = Url::parse(self.host).unwrap();
-        let url = url.join("query").unwrap();
-        let url = Url::parse_with_params(url.as_str(), &param).unwrap();
-
-        let q_lower = q.to_lowercase();
-        let mut res = {
-            if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
-                client.get(url).send().unwrap()
-            } else {
-                client.post(url).send().unwrap()
-            }
-        };
-
-        let mut context = String::new();
-        let _ = res.read_to_string(&mut context);
-
-        let json_data = serde_json::from_str(&context).unwrap();
-
-        match res.status_raw().0 {
-            200 => Ok(json_data),
-            400 => Err(json_data.get("error").unwrap().to_string()),
-            401 => Err("Invalid authentication credentials.".to_string()),
-            _ => Err("There is something wrong".to_string())
+    /// Query and return data, the data type is `Vec<serde_json::Value>`
+    fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, String> {
+        match self.query_raw(q, epoch) {
+            Ok(t) => Ok(t.get("results").unwrap().as_array().unwrap().to_vec()),
+            Err(e) => Err(e)
         }
     }
 
@@ -345,7 +366,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn create_database(&self, dbname: &str) -> String {
         let sql = format!("Create database {}", serialization::quote_ident(dbname));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -354,7 +375,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn drop_database(&self, dbname: &str) -> String {
         let sql = format!("Drop database {}", serialization::quote_ident(dbname));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -371,7 +392,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             }
         };
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -380,7 +401,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn drop_user(&self, user: &str) -> String {
         let sql = format!("Drop user {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -390,7 +411,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Set password for {}={}", serialization::quote_ident(user),
                           serialization::quote_literal(passwd));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -399,7 +420,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn grant_admin_privileges(&self, user: &str) -> String {
         let sql = format!("Grant all privileges to {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -408,7 +429,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn revoke_admin_privileges(&self, user: &str) -> String {
         let sql = format!("Revoke all privileges from {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -420,7 +441,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Grant {} on {} to {}", privilege, serialization::quote_ident(db),
                           serialization::quote_ident(user));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }
@@ -432,7 +453,56 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Revoke {0} on {1} from {2}", privilege, serialization::quote_ident(db),
                           serialization::quote_ident(user));
 
-        if let Err(err) = self.query(&sql, None) {
+        if let Err(err) = self.query_raw(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Create a retention policy for a database.
+    /// :param duration: the duration of the new retention policy.
+    ///  Durations such as 1h, 90m, 12h, 7d, and 4w, are all supported
+    ///  and mean 1 hour, 90 minutes, 12 hours, 7 day, and 4 weeks,
+    ///  respectively. For infinite retention – meaning the data will
+    ///  never be deleted – use 'INF' for duration.
+    ///  The minimum retention period is 1 hour.
+    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> String {
+        let database = {
+            if let Some(t) = db {
+                t
+            } else {
+                self.db
+            }
+        };
+
+        let sql: String = {
+            if default {
+                format!("Create retention policy {} on {} duration {} replication {} default",
+                        serialization::quote_ident(name), serialization::quote_ident(database), duration, replication)
+            } else {
+                format!("Create retention policy {} on {} duration {} replication {}",
+                        serialization::quote_ident(name), serialization::quote_ident(database), duration, replication)
+            }
+        };
+
+        if let Err(err) = self.query_raw(&sql, None) {
+            err
+        } else { String::from("0") }
+    }
+
+    /// Drop an existing retention policy for a database.
+    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> String {
+        let database = {
+            if let Some(t) = db {
+                t
+            } else {
+                self.db
+            }
+        };
+
+        let sql = format!("Drop retention policy {} on {}", serialization::quote_ident(name),
+                          serialization::quote_ident(database));
+
+        if let Err(err) = self.query_raw(&sql, None) {
             err
         } else { String::from("0") }
     }

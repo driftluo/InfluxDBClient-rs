@@ -1,6 +1,6 @@
 [package]
 name = "influx_db_client"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["piaoliu <441594700@qq.com>"]
 documentation = "https://docs.rs/influx_db_client/"
 repository = "https://github.com/driftluo/InfluxDBClient-rs"
