@@ -367,7 +367,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Create database {}", serialization::quote_ident(dbname));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -377,7 +377,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Drop database {}", serialization::quote_ident(dbname));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -395,7 +395,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         };
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -405,7 +405,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Drop user {}", serialization::quote_ident(user));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -416,7 +416,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
                           serialization::quote_literal(passwd));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -426,7 +426,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Grant all privileges to {}", serialization::quote_ident(user));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -436,7 +436,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Revoke all privileges from {}", serialization::quote_ident(user));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -449,7 +449,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
                           serialization::quote_ident(user));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -462,7 +462,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
                           serialization::quote_ident(user));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -494,7 +494,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         };
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
@@ -513,7 +513,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
                           serialization::quote_ident(database));
 
         match self.query_raw(&sql, None) {
-            Ok(t) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
