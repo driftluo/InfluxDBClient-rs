@@ -411,7 +411,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     }
 
     /// Change the password of an existing user.
-    fn set_user_password(&self, user: &str, passwd: &str) -> SResult<(),String> {
+    fn set_user_password(&self, user: &str, passwd: &str) -> Result<(),String> {
         let sql = format!("Set password for {}={}", serialization::quote_ident(user),
                           serialization::quote_literal(passwd));
 
