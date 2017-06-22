@@ -148,41 +148,41 @@ pub trait InfluxClient {
     fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, String>;
 
     /// Create a new database in InfluxDB.
-    fn create_database(&self, dbname: &str) -> String;
+    fn create_database(&self, dbname: &str) -> Result<(),String>;
 
     /// Drop a database from InfluxDB.
-    fn drop_database(&self, dbname: &str) -> String;
+    fn drop_database(&self, dbname: &str) -> Result<(),String>;
 
     /// Create a new user in InfluxDB.
-    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> String;
+    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> Result<(),String>;
 
     /// Drop a user from InfluxDB.
-    fn drop_user(&self, user: &str) -> String;
+    fn drop_user(&self, user: &str) -> Result<(),String>;
 
     /// Change the password of an existing user.
-    fn set_user_password(&self, user: &str, passwd: &str) -> String;
+    fn set_user_password(&self, user: &str, passwd: &str) -> Result<(),String>;
 
     /// Grant cluster administration privileges to a user.
-    fn grant_admin_privileges(&self, user: &str) -> String;
+    fn grant_admin_privileges(&self, user: &str) -> Result<(),String>;
 
     /// Revoke cluster administration privileges from a user.
-    fn revoke_admin_privileges(&self, user: &str) -> String;
+    fn revoke_admin_privileges(&self, user: &str) -> Result<(),String>;
 
     /// Grant a privilege on a database to a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> String;
+    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(),String>;
 
     /// Revoke a privilege on a database from a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> String;
+    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(),String>;
 
     /// Create a retention policy for a database.
-    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> String;
+    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> Result<(),String>;
 
     /// Drop an existing retention policy for a database.
-    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> String;
+    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> Result<(),String>;
 }
 
 trait Query {
@@ -363,25 +363,27 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     }
 
     /// Create a new database in InfluxDB.
-    fn create_database(&self, dbname: &str) -> String {
+    fn create_database(&self, dbname: &str) -> Result<(),String> {
         let sql = format!("Create database {}", serialization::quote_ident(dbname));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Drop a database from InfluxDB.
-    fn drop_database(&self, dbname: &str) -> String {
+    fn drop_database(&self, dbname: &str) -> Result<(),String> {
         let sql = format!("Drop database {}", serialization::quote_ident(dbname));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Create a new user in InfluxDB.
-    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> String {
+    fn create_user(&self, user: &str, passwd: &str, admin: bool) -> Result<(),String> {
         let sql: String = {
             if admin {
                 format!("Create user {0} with password {1} with all privileges",
@@ -392,70 +394,77 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             }
         };
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Drop a user from InfluxDB.
-    fn drop_user(&self, user: &str) -> String {
+    fn drop_user(&self, user: &str) -> Result<(),String> {
         let sql = format!("Drop user {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Change the password of an existing user.
-    fn set_user_password(&self, user: &str, passwd: &str) -> String {
+    fn set_user_password(&self, user: &str, passwd: &str) -> SResult<(),String> {
         let sql = format!("Set password for {}={}", serialization::quote_ident(user),
                           serialization::quote_literal(passwd));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Grant cluster administration privileges to a user.
-    fn grant_admin_privileges(&self, user: &str) -> String {
+    fn grant_admin_privileges(&self, user: &str) -> Result<(),String> {
         let sql = format!("Grant all privileges to {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Revoke cluster administration privileges from a user.
-    fn revoke_admin_privileges(&self, user: &str) -> String {
+    fn revoke_admin_privileges(&self, user: &str) -> Result<(),String> {
         let sql = format!("Revoke all privileges from {}", serialization::quote_ident(user));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Grant a privilege on a database to a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> String {
+    fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(),String> {
         let sql = format!("Grant {} on {} to {}", privilege, serialization::quote_ident(db),
                           serialization::quote_ident(user));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Revoke a privilege on a database from a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> String {
+    fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(),String> {
         let sql = format!("Revoke {0} on {1} from {2}", privilege, serialization::quote_ident(db),
                           serialization::quote_ident(user));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Create a retention policy for a database.
@@ -465,7 +474,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     ///  respectively. For infinite retention – meaning the data will
     ///  never be deleted – use 'INF' for duration.
     ///  The minimum retention period is 1 hour.
-    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> String {
+    fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> Result<(),String> {
         let database = {
             if let Some(t) = db {
                 t
@@ -484,13 +493,14 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             }
         };
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Drop an existing retention policy for a database.
-    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> String {
+    fn drop_retention_policy(&self, name: &str, db: Option<&str>) -> Result<(),String> {
         let database = {
             if let Some(t) = db {
                 t
@@ -502,9 +512,10 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
         let sql = format!("Drop retention policy {} on {}", serialization::quote_ident(name),
                           serialization::quote_ident(database));
 
-        if let Err(err) = self.query_raw(&sql, None) {
-            err
-        } else { String::from("0") }
+        match self.query_raw(&sql, None) {
+            Ok(t) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 }
 
