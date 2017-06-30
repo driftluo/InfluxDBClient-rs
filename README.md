@@ -1,4 +1,7 @@
 # InfluxDBClient-rs
+
+![image](https://img.shields.io/crates/v/influx_db_client.svg)
+
 A easy-use client to influxdb
 
 ## Overview
