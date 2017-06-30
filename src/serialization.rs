@@ -63,6 +63,11 @@ pub fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace("\\", "\\\\").replace("'", "\\'"))
 }
 
+#[inline]
+pub fn conversion(value: String) -> String {
+    value.replace("\'", "").replace("\"", "").replace("\\", "").trim().to_string()
+}
+
 
 #[cfg(test)]
 mod test {
