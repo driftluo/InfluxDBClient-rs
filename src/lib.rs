@@ -148,6 +148,9 @@ pub trait InfluxClient {
     /// ```
     fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, error::Error>;
 
+    // Drop a measurement
+    fn drop_measurement(&self, measurement: &str) -> Result<(), error::Error>;
+
     /// Create a new database in InfluxDB.
     fn create_database(&self, dbname: &str) -> Result<(), error::Error>;
 
@@ -268,7 +271,7 @@ impl<'a> Query for InfluxdbClient<'a> {
 
         match res.status_raw().0 {
             200 => Ok(json_data),
-            400 => Err(error::Error::SyntaxError(json_data.get("error").unwrap().to_string())),
+            400 => Err(error::Error::SyntaxError(serialization::conversion(json_data.get("error").unwrap().to_string()))),
             401 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
             _ => Err(error::Error::Unknow("There is something wrong".to_string()))
         }
@@ -347,9 +350,9 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
 
         match res.status_raw().0 {
             204 => Ok(true),
-            400 => Err(error::Error::SyntaxError(err)),
+            400 => Err(error::Error::SyntaxError(serialization::conversion(err))),
             401 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
-            404 => Err(error::Error::DataBaseDoesNotExist(err)),
+            404 => Err(error::Error::DataBaseDoesNotExist(serialization::conversion(err))),
             500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
             _ => Err(error::Error::Unknow("There is something wrong".to_string()))
         }
@@ -359,6 +362,15 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, error::Error> {
         match self.query_raw(q, epoch) {
             Ok(t) => Ok(t.get("results").unwrap().as_array().unwrap().to_vec()),
+            Err(e) => Err(e)
+        }
+    }
+
+    fn drop_measurement(&self, measurement: &str) -> Result<(), error::Error> {
+        let sql = format!("Drop measurement {}", serialization::quote_ident(measurement));
+
+        match self.query_raw(&sql, None) {
+            Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
