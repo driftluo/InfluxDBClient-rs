@@ -18,6 +18,7 @@ I have no solution to this problem, PR are welcome.
 - [x] Support query syntax.
 - [x] Support query post syntax.
 - [x] Add some easy-to-use functions.
+- [ ] Add the type of error
 
 ## Usage
 
