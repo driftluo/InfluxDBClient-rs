@@ -59,7 +59,7 @@ fn main() {
 
 This is the [API Document](https://docs.influxdata.com/influxdb/v1.2/tools/api/), it may apply to version 1.0 or higher.
 
-I have tested it in version 1.0.2.
+I have tested it in version 1.0.2 and 1.3.5.
 
 ## Thanks
 
