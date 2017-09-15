@@ -10,9 +10,7 @@ This is an InfluxDB driver for Rust.
 
 ## Status
 
-This project has been able to run properly,
-most of the problems still on the type of return value,
-I have no solution to this problem, PR are welcome.
+This project has been able to run properly, PR are welcome.
 
 ### Todo
 
@@ -61,7 +59,7 @@ fn main() {
 
 This is the [API Document](https://docs.influxdata.com/influxdb/v1.2/tools/api/), it may apply to version 1.0 or higher.
 
-I have tested it in version 1.0.2.
+I have tested it in version 1.0.2 and 1.3.5.
 
 ## Thanks
 
