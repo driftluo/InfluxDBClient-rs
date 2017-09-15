@@ -40,7 +40,7 @@ extern crate serde_json;
 
 use hyper::client::Client;
 use hyper::Url;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::Read;
 use std::time::Duration;
 
@@ -58,8 +58,8 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub struct Point {
     pub measurement: String,
-    pub tags: BTreeMap<String, Value>,
-    pub fields: BTreeMap<String, Value>,
+    pub tags: HashMap<String, Value>,
+    pub fields: HashMap<String, Value>,
     pub timestamp: Option<i64>
 }
 
@@ -97,11 +97,11 @@ impl Tostr for Precision {
 }
 
 #[derive(Debug)]
-pub struct InfluxdbClient<'a> {
-    host: &'a str,
-    db: &'a str,
-    username: &'a str,
-    passwd: &'a str,
+pub struct InfluxdbClient {
+    host: String,
+    db: String,
+    username: String,
+    passwd: String,
     read_timeout: Option<u64>,
     write_timeout: Option<u64>,
 }
@@ -194,14 +194,15 @@ trait Query {
     fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, error::Error>;
 }
 
-impl<'a> InfluxdbClient<'a> {
+impl InfluxdbClient {
     /// Create a new influxdb client
-    pub fn new(host: &'a str, db: &'a str, username: &'a str, passwd: &'a str) -> InfluxdbClient<'a> {
+    pub fn new<T>(host: T, db: T, username: T, passwd: T) -> Self
+        where T: ToString {
         InfluxdbClient {
-            host: host,
-            db: db,
-            username: username,
-            passwd: passwd,
+            host: host.to_string(),
+            db: db.to_string(),
+            username: username.to_string(),
+            passwd: passwd.to_string(),
             read_timeout: None,
             write_timeout: None,
         }
@@ -218,21 +219,23 @@ impl<'a> InfluxdbClient<'a> {
     }
 
     /// Change the client's database
-    pub fn swith_database(&mut self, database: &'a str) {
-        self.db = database;
+    pub fn swith_database<T>(&mut self, database: T) where T: ToString {
+        self.db = database.to_string();
     }
 
     /// Change the client's user
-    pub fn swith_user(&mut self, user: &'a str, passwd: &'a str) {
-        self.username = user;
-        self.passwd = passwd;
+    pub fn swith_user<T>(&mut self, user: T, passwd: T) where T: ToString {
+        self.username = user.to_string();
+        self.passwd = passwd.to_string();
     }
 }
 
-impl<'a> Query for InfluxdbClient<'a> {
+unsafe impl Send for InfluxdbClient {}
+
+impl Query for InfluxdbClient {
     /// Query and return to the native json structure
     fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, error::Error> {
-        let mut param = vec![("db", self.db), ("u", self.username), ("p", self.passwd), ("q", q)];
+        let mut param = vec![("db", self.db.as_str()), ("u", self.username.as_str()), ("p", self.passwd.as_str()), ("q", q)];
 
         match epoch {
             Some(ref t) => param.push(("epoch", t.to_str())),
@@ -251,7 +254,7 @@ impl<'a> Query for InfluxdbClient<'a> {
             None => ()
         }
 
-        let url = Url::parse(self.host).unwrap();
+        let url = Url::parse(&self.host).unwrap();
         let url = url.join("query").unwrap();
         let url = Url::parse_with_params(url.as_str(), &param).unwrap();
 
@@ -278,11 +281,11 @@ impl<'a> Query for InfluxdbClient<'a> {
     }
 }
 
-impl<'a> InfluxClient for InfluxdbClient<'a> {
+impl InfluxClient for InfluxdbClient {
     /// Query whether the corresponding database exists, return bool
     fn ping(&self) -> bool {
         let ping = Client::new();
-        let url = Url::parse(self.host).unwrap();
+        let url = Url::parse(&self.host).unwrap();
         let url = url.join("ping").unwrap();
         let res = ping.get(url).send().unwrap();
         match res.status_raw().0 {
@@ -294,7 +297,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     /// Query the version of the database and return the version number
     fn get_version(&self) -> Option<String> {
         let ping = Client::new();
-        let url = Url::parse(self.host).unwrap();
+        let url = Url::parse(&self.host).unwrap();
         let url = url.join("ping").unwrap();
         let res = ping.get(url).send().unwrap();
         match res.status_raw().0 {
@@ -316,7 +319,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
     fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, error::Error> {
         let line = serialization::line_serialization(points);
 
-        let mut param = vec![("db", self.db), ("u", self.username), ("p", self.passwd)];
+        let mut param = vec![("db", self.db.as_str()), ("u", self.username.as_str()), ("p", self.passwd.as_str())];
 
         match precision {
             Some(ref t) => param.push(("precision", t.to_str())),
@@ -340,7 +343,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             None => ()
         }
 
-        let url = Url::parse(self.host).unwrap();
+        let url = Url::parse(&self.host).unwrap();
         let url = url.join("write").unwrap();
         let url = Url::parse_with_params(url.as_str(), &param).unwrap();
 
@@ -492,7 +495,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             if let Some(t) = db {
                 t
             } else {
-                self.db
+                &self.db
             }
         };
 
@@ -518,7 +521,7 @@ impl<'a> InfluxClient for InfluxdbClient<'a> {
             if let Some(t) = db {
                 t
             } else {
-                self.db
+                &self.db
             }
         };
 
@@ -537,25 +540,35 @@ impl Point {
     pub fn new(measurement: &str) -> Point {
         Point {
             measurement: String::from(measurement),
-            tags: BTreeMap::new(),
-            fields: BTreeMap::new(),
+            tags: HashMap::new(),
+            fields: HashMap::new(),
             timestamp: None,
         }
     }
 
     /// Add a tag and its value
-    pub fn add_tag(&mut self, tag: &str, value: Value) {
+    pub fn add_tag<T: ToString>(&mut self, tag: T, value: Value) {
         self.tags.insert(tag.to_string(), value);
     }
 
     /// Add a field and its value
-    pub fn add_field(&mut self, field: &str, value: Value) {
+    pub fn add_field<T: ToString>(&mut self, field: T, value: Value) {
         self.fields.insert(field.to_string(), value);
     }
 
     /// Set the specified timestamp
     pub fn add_timestamp(&mut self, timestamp: i64) {
         self.timestamp = Some(timestamp);
+    }
+
+    /// Create a complete point
+    pub fn create_new(measuremnet: &str, tags: HashMap<String, Value>, fields: HashMap<String, Value>, timestamp: i64) -> Self {
+        Point {
+            measurement: String::from(measuremnet),
+            tags: tags,
+            fields: fields,
+            timestamp: Some(timestamp),
+        }
     }
 }
 

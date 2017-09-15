@@ -10,9 +10,7 @@ This is an InfluxDB driver for Rust.
 
 ## Status
 
-This project has been able to run properly,
-most of the problems still on the type of return value,
-I have no solution to this problem, PR are welcome.
+This project has been able to run properly, PR are welcome.
 
 ### Todo
 
