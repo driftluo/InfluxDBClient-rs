@@ -4,15 +4,15 @@ use ::{Points, Value};
 pub fn line_serialization(points: Points) -> String {
     let mut line = Vec::new();
     for point in points.point {
-        line.push(point.measurement);
+        line.push(escape_measurement(point.measurement));
 
         for (tag, value) in point.tags.iter() {
             line.push(",".to_string());
-            line.push(tag.to_string());
+            line.push(escape_keys_and_tags(tag.to_string()));
             line.push("=".to_string());
 
             match value {
-                &Value::String(ref s) => line.push(s.to_string()),
+                &Value::String(ref s) => line.push(escape_keys_and_tags(s.to_string())),
                 &Value::Float(ref f) => line.push(f.to_string()),
                 &Value::Integer(ref i) => line.push(i.to_string()),
                 &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
@@ -28,11 +28,11 @@ pub fn line_serialization(points: Points) -> String {
                     " "
                 } else { "," }
             }.to_string());
-            line.push(field.to_string());
+            line.push(escape_keys_and_tags(field.to_string()));
             line.push("=".to_string());
 
             match value {
-                &Value::String(ref s) => line.push(s.to_string()),
+                &Value::String(ref s) => line.push(escape_string_field_value(s.to_string())),
                 &Value::Float(ref f) => line.push(f.to_string()),
                 &Value::Integer(ref i) => line.push(i.to_string()),
                 &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
@@ -68,6 +68,20 @@ pub fn conversion(value: String) -> String {
     value.replace("\'", "").replace("\"", "").replace("\\", "").trim().to_string()
 }
 
+#[inline]
+fn escape_keys_and_tags(value: String) -> String {
+    value.replace(",", "\\,").replace("=", "\\=").replace(" ", "\\ ")
+}
+
+#[inline]
+fn escape_measurement(value: String) -> String {
+    value.replace(",", "\\,").replace(" ", "\\ ")
+}
+
+#[inline]
+fn escape_string_field_value(value: String) -> String {
+    value.replace("\"", "\\\"")
+}
 
 #[cfg(test)]
 mod test {
@@ -82,6 +96,21 @@ mod test {
         let points = Points::new(point);
 
         assert_eq!(line_serialization(points), "test,sometag=false somefield=65\n")
+    }
+
+    #[test]
+    fn escape_keys_and_tags_test() {
+        assert_eq!(escape_keys_and_tags(String::from("foo, hello=world")) , "foo\\,\\ hello\\=world")
+    }
+
+    #[test]
+    fn escape_measurement_test() {
+        assert_eq!(escape_measurement(String::from("foo, hello")) , "foo\\,\\ hello")
+    }
+
+    #[test]
+    fn escape_string_field_value_test() {
+        assert_eq!(escape_string_field_value(String::from("\"foo")) , "\\\"foo")
     }
 
     #[test]
