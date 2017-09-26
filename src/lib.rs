@@ -96,7 +96,7 @@ impl Tostr for Precision {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InfluxdbClient {
     host: String,
     db: String,

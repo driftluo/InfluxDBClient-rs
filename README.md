@@ -10,7 +10,7 @@ This is an InfluxDB driver for Rust.
 
 ## Status
 
-This project has been able to run properly, PR are welcome.
+This project has been able to run properly, PR is welcome.
 
 ### Todo
 
@@ -22,6 +22,8 @@ This project has been able to run properly, PR are welcome.
 - [x] Add the type of error
 
 ## Usage
+
+### Single thread
 
 ```
 extern crate influx_db_client;
@@ -50,6 +52,36 @@ fn main() {
     println!("{}\nversion:{}", res, version)
 
     // query
+    let res = client.query("select * from test", None).unwrap();
+    println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
+}
+```
+
+### Multi-threaded
+
+You can use the smart pointer, such as Arc, Mutex, Refcell, to wrap the influxdbclient, or move the client into the thread as shown below.
+
+```
+extern crate influx_db_client;
+
+use influx_db_client::{InfluxdbClient, Point, Value, InfluxClient};
+use std::thread;
+
+#[allow(unused_must_use)]
+fn main() {
+    let mut client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
+    client.set_write_timeout(10);
+    client.set_read_timeout(10);
+    let client1 = client.clone();
+
+    let handle = thread::spawn(move || {
+        let mut point = Point::new("test");
+        point.add_field("'somefield'", Value::String(String::from("1")));
+        client1.write_point(point, None, None).unwrap();
+    });
+
+    handle.join();
+
     let res = client.query("select * from test", None).unwrap();
     println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
 }
