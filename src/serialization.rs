@@ -14,7 +14,7 @@ pub fn line_serialization(points: Points) -> String {
             match value {
                 &Value::String(ref s) => line.push(escape_keys_and_tags(s.to_string())),
                 &Value::Float(ref f) => line.push(f.to_string()),
-                &Value::Integer(ref i) => line.push(i.to_string()),
+                &Value::Integer(ref i) => line.push(i.to_string() + "i"),
                 &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
             }
         }
@@ -34,7 +34,7 @@ pub fn line_serialization(points: Points) -> String {
             match value {
                 &Value::String(ref s) => line.push(escape_string_field_value(s.to_string())),
                 &Value::Float(ref f) => line.push(f.to_string()),
-                &Value::Integer(ref i) => line.push(i.to_string()),
+                &Value::Integer(ref i) => line.push(i.to_string() + "i"),
                 &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
             }
         }
