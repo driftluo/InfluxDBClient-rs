@@ -11,4 +11,5 @@ license = "MIT"
 
 [dependencies]
 hyper = "~0.10.12"
+hyper-native-tls = "~0.2.4"
 serde_json = '~1.0.2'

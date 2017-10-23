@@ -1,7 +1,7 @@
 use ::{Points, Value};
 
 /// Resolve the points to line protocol format
-pub fn line_serialization(points: Points) -> String {
+pub(crate) fn line_serialization(points: Points) -> String {
     let mut line = Vec::new();
     for point in points.point {
         line.push(escape_measurement(point.measurement));
@@ -54,17 +54,17 @@ pub fn line_serialization(points: Points) -> String {
 }
 
 #[inline]
-pub fn quote_ident(value: &str) -> String {
+pub(crate) fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
 }
 
 #[inline]
-pub fn quote_literal(value: &str) -> String {
+pub(crate) fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace("\\", "\\\\").replace("'", "\\'"))
 }
 
 #[inline]
-pub fn conversion(value: String) -> String {
+pub(crate) fn conversion(value: String) -> String {
     value.replace("\'", "").replace("\"", "").replace("\\", "").trim().to_string()
 }
 
