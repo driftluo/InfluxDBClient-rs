@@ -1,6 +1,7 @@
 use serde_json;
-use hyper::client::Client;
+use hyper::client::Client as hyper_client;
 use hyper::net::HttpsConnector;
+use hyper::client::{ RequestBuilder, };
 use hyper_native_tls::native_tls::TlsConnector;
 use hyper_native_tls::NativeTlsClient;
 use hyper::Url;
@@ -8,61 +9,36 @@ use std::io::Read;
 use std::time::Duration;
 use { error, serialization, Precision, Point, Points };
 
-#[derive(Clone)]
-pub struct InfluxdbClient {
-    ip: String,
+#[derive(Debug)]
+pub struct Client {
+    host: String,
     db: String,
     authentication: Option<(String, String)>,
-    tls_option: TLSOption,
-    read_timeout: Option<u64>,
-    write_timeout: Option<u64>,
+    client: HttpClient
 }
 
-#[derive(Default, Clone)]
-struct TLSOption {
-    tls: bool,
-    connector: Option<TlsConnector>,
-}
+unsafe impl Send for Client {}
 
-impl TLSOption {
-    fn get_tls(&self) -> bool {
-        self.tls
-    }
-
-    fn get_connector(&self) -> Option<TlsConnector> {
-        self.connector.clone()
-    }
-
-    fn set_connector(&mut self, connector: TlsConnector) {
-        self.connector = Some(connector);
-    }
-
-    fn set_tls(&mut self) {
-        self.tls = true;
-    }
-}
-
-unsafe impl Send for InfluxdbClient {}
-
-impl InfluxdbClient {
+impl Client {
     /// Create a new influxdb client
-    pub fn new<T>(ip: T, db: T) -> Self
+    pub fn new<T>(host: T, db: T) -> Self
         where T: ToString {
-        InfluxdbClient {
-            ip: ip.to_string(),
+        Client {
+            host: host.to_string(),
             db: db.to_string(),
-            ..Default::default()
+            authentication: None,
+            client: HttpClient::default()
         }
     }
 
-    /// Set the read timeout value
+    /// Set the read timeout value, unit "s"
     pub fn set_read_timeout(&mut self, timeout: u64) {
-        self.read_timeout = Some(timeout);
+        self.client.set_read_timeout(Duration::from_secs(timeout));
     }
 
-    /// Set the write timeout value
+    /// Set the write timeout value, unit "s"
     pub fn set_write_timeout(&mut self, timeout: u64) {
-        self.write_timeout = Some(timeout);
+        self.client.set_write_timeout(Duration::from_secs(timeout));
     }
 
     /// Change the client's database
@@ -76,22 +52,15 @@ impl InfluxdbClient {
         self
     }
 
-    pub fn set_tls(mut self, connector: Option<TlsConnector>) -> Self {
-        match connector {
-            Some(tls_connector) => {
-                self.tls_option.set_connector(tls_connector);
-            }
-            None => {}
-        };
-        self.tls_option.set_tls();
+    pub fn set_tls(mut self, connector: Option<TLSOption>) -> Self {
+        self.client = HttpClient::new_with_option(connector);
         self
     }
 
     /// Query whether the corresponding database exists, return bool
     pub fn ping(&self) -> bool {
-        let ping = self.build_client();
         let url = self.build_url("ping", None);
-        let res = ping.get(url).send().unwrap();
+        let res = self.client.get(url).send().unwrap();
         match res.status_raw().0 {
             204 => true,
             _ => false,
@@ -100,9 +69,8 @@ impl InfluxdbClient {
 
     /// Query the version of the database and return the version number
     pub fn get_version(&self) -> Option<String> {
-        let ping = self.build_client();
         let url = self.build_url("ping", None);
-        let res = ping.get(url).send().unwrap();
+        let res = self.client.get(url).send().unwrap();
         match res.status_raw().0 {
             204 => match res.headers.get_raw("X-Influxdb-Version") {
                 Some(i) => Some(String::from_utf8(i[0].to_vec()).unwrap()),
@@ -142,21 +110,9 @@ impl InfluxdbClient {
             None => (),
         };
 
-        let mut client = self.build_client();
-
-        match self.read_timeout {
-            Some(t) => client.set_read_timeout(Some(Duration::new(t, 0))),
-            None => ()
-        }
-
-        match self.write_timeout {
-            Some(t) => client.set_write_timeout(Some(Duration::new(t, 0))),
-            None => ()
-        }
-
         let url = self.build_url("write", Some(param));
 
-        let mut res = client.post(url).body(&line).send().unwrap();
+        let mut res = self.client.post(url).body(&line).send().unwrap();
         let mut err = String::new();
         let _ = res.read_to_string(&mut err);
 
@@ -360,26 +316,14 @@ impl InfluxdbClient {
             None => ()
         }
 
-        let mut client = self.build_client();
-
-        match self.read_timeout {
-            Some(t) => client.set_read_timeout(Some(Duration::from_secs(t))),
-            None => ()
-        }
-
-        match self.write_timeout {
-            Some(t) => client.set_write_timeout(Some(Duration::from_secs(t))),
-            None => ()
-        }
-
         let url = self.build_url("query", Some(param));
 
         let q_lower = q.to_lowercase();
         let mut res = {
             if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
-                client.get(url).send().unwrap()
+                self.client.get(url).send().unwrap()
             } else {
-                client.post(url).send().unwrap()
+                self.client.post(url).send().unwrap()
             }
         };
 
@@ -397,16 +341,7 @@ impl InfluxdbClient {
     }
 
     fn build_url(&self, key: &str, param: Option<Vec<(&str, &str)>>) -> Url {
-        let url = match self.tls_option.get_tls() {
-            true => {
-                let host = String::from("https://") + &self.ip;
-                Url::parse(&host).unwrap().join(key).unwrap()
-            }
-            false => {
-                let host = String::from("http://") + &self.ip;
-                Url::parse(&host).unwrap().join(key).unwrap()
-            }
-        };
+        let url = Url::parse(&self.host).unwrap().join(key).unwrap();
 
         if param.is_some() {
             Url::parse_with_params(url.as_str(), param.unwrap()).unwrap()
@@ -414,33 +349,78 @@ impl InfluxdbClient {
             url
         }
     }
+}
 
-    fn build_client(&self) -> Client {
-        match self.tls_option.get_tls() {
-            true => {
-                match self.tls_option.get_connector() {
-                    Some(tls_connector) => {
-                        let native_tls_client = NativeTlsClient::from(tls_connector);
-                        let connector = HttpsConnector::new(native_tls_client);
-                        Client::with_connector(connector)
-                    }
-                    None => {
-                        let ssl = NativeTlsClient::new().unwrap();
-                        let connector = HttpsConnector::new(ssl);
-                        Client::with_connector(connector)
-                    }
-                }
-            }
-            false => {
-                Client::new()
-            }
-        }
+impl Default for Client {
+    /// connecting for default database `test` and host `htt://localhost:8086`
+    fn default() -> Self {
+        Client::new(String::from("localhost:8086"), String::from("test"))
     }
 }
 
-impl Default for InfluxdbClient {
-    /// connecting for default database `test` and host `htt://localhost:8086`
+#[derive(Default, Clone)]
+pub struct TLSOption {
+    connector: Option<TlsConnector>,
+}
+
+impl TLSOption {
+    pub fn new(connector: TlsConnector) -> Self {
+        TLSOption { connector: Some(connector) }
+    }
+
+    fn get_connector(self) -> TlsConnector {
+        self.connector.unwrap()
+    }
+}
+
+#[derive(Debug)]
+struct HttpClient {
+    client: hyper_client
+}
+
+impl HttpClient {
+    fn new() -> Self {
+        HttpClient {
+            client: hyper_client::new()
+        }
+    }
+
+    fn new_with_option(tls_option: Option<TLSOption>) -> Self {
+        let connector = match tls_option {
+            Some(tls_connector) => {
+                let native_tls_client = NativeTlsClient::from(tls_connector.get_connector());
+                HttpsConnector::new(native_tls_client)
+            }
+            None => {
+                let ssl = NativeTlsClient::new().unwrap();
+                HttpsConnector::new(ssl)
+            }
+        };
+
+        HttpClient {
+            client: hyper_client::with_connector(connector)
+        }
+    }
+
+    fn set_read_timeout(&mut self, timeout: Duration) {
+        self.client.set_read_timeout(Some(timeout));
+    }
+
+    fn set_write_timeout(&mut self, timeout: Duration) {
+        self.client.set_write_timeout(Some(timeout));
+    }
+
+    fn get(&self, url: Url) -> RequestBuilder {
+        self.client.get(url)
+    }
+
+    fn post(&self, url: Url) -> RequestBuilder {
+        self.client.post(url)
+    }
+}
+
+impl Default for HttpClient {
     fn default() -> Self {
-        InfluxdbClient::new(String::from("localhost:8086"), String::from("test"))
+        HttpClient::new()
     }
 }
