@@ -7,6 +7,8 @@ use hyper_native_tls::NativeTlsClient;
 use hyper::Url;
 use std::io::Read;
 use std::time::Duration;
+use std::net::UdpSocket;
+use std::iter::FromIterator;
 use { error, serialization, Precision, Point, Points };
 
 #[derive(Debug)]
@@ -20,7 +22,7 @@ pub struct Client {
 unsafe impl Send for Client {}
 
 impl Client {
-    /// Create a new influxdb client
+    /// Create a new influxdb client with http
     pub fn new<T>(host: T, db: T) -> Self
         where T: ToString {
         Client {
@@ -28,6 +30,16 @@ impl Client {
             db: db.to_string(),
             authentication: None,
             client: HttpClient::default()
+        }
+    }
+
+    /// Create a new influxdb client with https
+    pub fn new_with_option<T: ToString>(host: T, db: T, tls_option: Option<TLSOption>) -> Self {
+        Client {
+            host: host.to_string(),
+            db: db.to_string(),
+            authentication: None,
+            client: HttpClient::new_with_option(tls_option)
         }
     }
 
@@ -52,6 +64,7 @@ impl Client {
         self
     }
 
+    /// Change http to https, but don't leave the read write timeout setting
     pub fn set_tls(mut self, connector: Option<TLSOption>) -> Self {
         self.client = HttpClient::new_with_option(connector);
         self
@@ -92,14 +105,6 @@ impl Client {
 
         let mut param = vec![("db", self.db.as_str())];
 
-        match self.authentication {
-            Some(ref t) => {
-                param.push(("u", &t.0));
-                param.push(("p", &t.1));
-            }
-            None => {}
-        }
-
         match precision {
             Some(ref t) => param.push(("precision", t.to_str())),
             None => param.push(("precision", "s")),
@@ -112,14 +117,14 @@ impl Client {
 
         let url = self.build_url("write", Some(param));
 
-        let mut res = self.client.post(url).body(&line).send().unwrap();
+        let mut res = self.client.post(url).body(&line).send()?;
         let mut err = String::new();
         let _ = res.read_to_string(&mut err);
 
         match res.status_raw().0 {
             204 => Ok(true),
             400 => Err(error::Error::SyntaxError(serialization::conversion(err))),
-            401 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
+            401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
             404 => Err(error::Error::DataBaseDoesNotExist(serialization::conversion(err))),
             500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
             _ => Err(error::Error::Unknow("There is something wrong".to_string()))
@@ -303,14 +308,6 @@ impl Client {
     fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, error::Error> {
         let mut param = vec![("db", self.db.as_str()), ("q", q)];
 
-        match self.authentication {
-            Some(ref t) => {
-                param.push(("u", &t.0));
-                param.push(("p", &t.1));
-            }
-            None => {}
-        }
-
         match epoch {
             Some(ref t) => param.push(("epoch", t.to_str())),
             None => ()
@@ -321,9 +318,9 @@ impl Client {
         let q_lower = q.to_lowercase();
         let mut res = {
             if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
-                self.client.get(url).send().unwrap()
+                self.client.get(url).send()?
             } else {
-                self.client.post(url).send().unwrap()
+                self.client.post(url).send()?
             }
         };
 
@@ -335,13 +332,26 @@ impl Client {
         match res.status_raw().0 {
             200 => Ok(json_data),
             400 => Err(error::Error::SyntaxError(serialization::conversion(json_data.get("error").unwrap().to_string()))),
-            401 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
+            401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
             _ => Err(error::Error::Unknow("There is something wrong".to_string()))
         }
     }
 
+    /// Constructs the full URL for an API call.
     fn build_url(&self, key: &str, param: Option<Vec<(&str, &str)>>) -> Url {
         let url = Url::parse(&self.host).unwrap().join(key).unwrap();
+
+        let mut authentication = Vec::new();
+
+        match self.authentication {
+            Some(ref t) => {
+                authentication.push(("u", &t.0));
+                authentication.push(("p", &t.1));
+            }
+            None => {}
+        }
+
+        let url = Url::parse_with_params(url.as_str(), authentication).unwrap();
 
         if param.is_some() {
             Url::parse_with_params(url.as_str(), param.unwrap()).unwrap()
@@ -358,12 +368,15 @@ impl Default for Client {
     }
 }
 
+/// Option for configuring the behavior of a `Client`.
 #[derive(Default, Clone)]
 pub struct TLSOption {
-    connector: Option<TlsConnector>,
+    /// A `native_tls::TlsConnector` configured as desired for HTTPS connections.
+    pub connector: Option<TlsConnector>,
 }
 
 impl TLSOption {
+    /// Create a new Tls_option
     pub fn new(connector: TlsConnector) -> Self {
         TLSOption { connector: Some(connector) }
     }
@@ -379,12 +392,14 @@ struct HttpClient {
 }
 
 impl HttpClient {
+    /// Constructs a new `HttpClient`.
     fn new() -> Self {
         HttpClient {
             client: hyper_client::new()
         }
     }
 
+    /// Constructs a new `HttpClient` with option config.
     fn new_with_option(tls_option: Option<TLSOption>) -> Self {
         let connector = match tls_option {
             Some(tls_connector) => {
@@ -402,25 +417,74 @@ impl HttpClient {
         }
     }
 
+    /// Set the read timeout value for all requests.
     fn set_read_timeout(&mut self, timeout: Duration) {
         self.client.set_read_timeout(Some(timeout));
     }
 
+    /// Set the write timeout value for all requests.
     fn set_write_timeout(&mut self, timeout: Duration) {
         self.client.set_write_timeout(Some(timeout));
     }
 
+    /// Make a GET request to influxdb
     fn get(&self, url: Url) -> RequestBuilder {
         self.client.get(url)
     }
 
+    /// Make a POST request to influxdb
     fn post(&self, url: Url) -> RequestBuilder {
         self.client.post(url)
     }
 }
 
 impl Default for HttpClient {
+    /// Create a default `HttpClient`
     fn default() -> Self {
         HttpClient::new()
+    }
+}
+
+pub struct UdpClient {
+    hosts: Vec<String>,
+}
+
+impl UdpClient {
+    pub fn new<T: Into<String>>(address: T) -> Self {
+        UdpClient { hosts: vec![address.into()] }
+    }
+
+    pub fn add_host<T: Into<String>>(&mut self, address: T) {
+        self.hosts.push(address.into())
+    }
+
+    pub fn write_points(&self, points: Points) -> Result<(), error::Error> {
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+
+        let line = serialization::line_serialization(points);
+        let line = line.as_bytes();
+        for address in &self.hosts {
+            socket.send_to(&line, address.clone())?;
+        }
+        Ok(())
+    }
+
+    pub fn write_point(&self, point: Point) -> Result<(), error::Error> {
+        let points = Points{ point: vec![point] };
+        self.write_points(points)
+    }
+}
+
+impl FromIterator<String> for UdpClient {
+    fn from_iter<I: IntoIterator<Item=String>>(iter: I) -> Self {
+        let mut hosts = Vec::new();
+
+        for i in iter {
+            hosts.push(i);
+        }
+
+        UdpClient {
+            hosts
+        }
     }
 }

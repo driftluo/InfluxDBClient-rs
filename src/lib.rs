@@ -44,6 +44,6 @@ pub mod error;
 pub mod client;
 pub mod keys;
 
-pub use client::Client;
+pub use client::{ Client, UdpClient };
 pub use keys::{ Point, Precision, Points, Value };
 pub use error::Error;

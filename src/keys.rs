@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -77,6 +78,20 @@ impl Points {
     pub fn create_new(points: Vec<Point>) -> Points {
         Points {
             point: points
+        }
+    }
+}
+
+impl FromIterator<Point> for Points {
+    fn from_iter<T: IntoIterator<Item=Point>>(iter: T) -> Self {
+        let mut points = Vec::new();
+
+        for point in iter {
+            points.push(point);
+        }
+
+        Points {
+            point: points,
         }
     }
 }
