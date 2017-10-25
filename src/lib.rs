@@ -38,6 +38,9 @@
 extern crate hyper;
 extern crate serde_json;
 extern crate hyper_native_tls;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod serialization;
 pub mod error;
@@ -45,5 +48,5 @@ pub mod client;
 pub mod keys;
 
 pub use client::{ Client, UdpClient };
-pub use keys::{ Point, Precision, Points, Value };
+pub use keys::{ Point, Precision, Points, Value, Node, Query, Series };
 pub use error::Error;

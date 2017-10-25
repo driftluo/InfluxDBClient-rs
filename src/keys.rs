@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
+use serde_json;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -94,6 +95,25 @@ impl FromIterator<Point> for Points {
             point: points,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Query {
+    pub results: Option<Vec<Node>>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Node {
+    pub statement_id: Option<u64>,
+    pub series: Option<Vec<Series>>
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Series {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub values: Vec<Vec<serde_json::Value>>
 }
 
 #[derive(Debug)]

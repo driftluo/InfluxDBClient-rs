@@ -9,7 +9,8 @@ use std::io::Read;
 use std::time::Duration;
 use std::net::UdpSocket;
 use std::iter::FromIterator;
-use { error, serialization, Precision, Point, Points };
+use std::net::{ ToSocketAddrs, SocketAddr };
+use { error, serialization, Precision, Point, Points, Node, Query };
 
 #[derive(Debug)]
 pub struct Client {
@@ -94,13 +95,13 @@ impl Client {
     }
 
     /// Write a point to the database
-    pub fn write_point(&self, point: Point, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, error::Error> {
+    pub fn write_point(&self, point: Point, precision: Option<Precision>, rp: Option<&str>) -> Result<(), error::Error> {
         let points = Points::new(point);
         self.write_points(points, precision, rp)
     }
 
     /// Write multiple points to the database
-    pub fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<bool, error::Error> {
+    pub fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<(), error::Error> {
         let line = serialization::line_serialization(points);
 
         let mut param = vec![("db", self.db.as_str())];
@@ -122,7 +123,7 @@ impl Client {
         let _ = res.read_to_string(&mut err);
 
         match res.status_raw().0 {
-            204 => Ok(true),
+            204 => Ok(()),
             400 => Err(error::Error::SyntaxError(serialization::conversion(err))),
             401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
             404 => Err(error::Error::DataBaseDoesNotExist(serialization::conversion(err))),
@@ -132,9 +133,9 @@ impl Client {
     }
 
     /// Query and return data, the data type is `Vec<serde_json::Value>`
-    pub fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Vec<serde_json::Value>, error::Error> {
+    pub fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Option<Vec<Node>>, error::Error> {
         match self.query_raw(q, epoch) {
-            Ok(t) => Ok(t.get("results").unwrap().as_array().unwrap().to_vec()),
+            Ok(t) => Ok(t.results),
             Err(e) => Err(e)
         }
     }
@@ -305,7 +306,7 @@ impl Client {
     }
 
     /// Query and return to the native json structure
-    fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<serde_json::Value, error::Error> {
+    fn query_raw(&self, q: &str, epoch: Option<Precision>) -> Result<Query, error::Error> {
         let mut param = vec![("db", self.db.as_str()), ("q", q)];
 
         match epoch {
@@ -327,11 +328,11 @@ impl Client {
         let mut context = String::new();
         let _ = res.read_to_string(&mut context);
 
-        let json_data = serde_json::from_str(&context).unwrap();
+        let json_data: Query = serde_json::from_str(&context).unwrap();
 
         match res.status_raw().0 {
             200 => Ok(json_data),
-            400 => Err(error::Error::SyntaxError(serialization::conversion(json_data.get("error").unwrap().to_string()))),
+            400 => Err(error::Error::SyntaxError(serialization::conversion(json_data.error.unwrap()))),
             401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
             _ => Err(error::Error::Unknow("There is something wrong".to_string()))
         }
@@ -445,38 +446,49 @@ impl Default for HttpClient {
     }
 }
 
+/// Udp client
 pub struct UdpClient {
-    hosts: Vec<String>,
+    hosts: Vec<SocketAddr>,
 }
 
 impl UdpClient {
+    /// Create a new udp client.
+    /// panic when T can't convert to SocketAddr
     pub fn new<T: Into<String>>(address: T) -> Self {
-        UdpClient { hosts: vec![address.into()] }
+        UdpClient {
+            hosts: vec![address.into().to_socket_addrs().unwrap().next().unwrap()]
+        }
     }
 
+    /// add udp host.
+    /// panic when T can't convert to SocketAddr
     pub fn add_host<T: Into<String>>(&mut self, address: T) {
-        self.hosts.push(address.into())
+        self.hosts.push(address.into()
+            .to_socket_addrs().unwrap().next().unwrap())
     }
 
+    /// Send Points to influxdb.
     pub fn write_points(&self, points: Points) -> Result<(), error::Error> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
 
         let line = serialization::line_serialization(points);
         let line = line.as_bytes();
-        for address in &self.hosts {
-            socket.send_to(&line, address.clone())?;
-        }
+
+        socket.send_to(&line, self.hosts.as_slice())?;
+
         Ok(())
     }
 
+    /// Send Point to influxdb.
     pub fn write_point(&self, point: Point) -> Result<(), error::Error> {
         let points = Points{ point: vec![point] };
         self.write_points(points)
     }
 }
 
-impl FromIterator<String> for UdpClient {
-    fn from_iter<I: IntoIterator<Item=String>>(iter: I) -> Self {
+impl FromIterator<SocketAddr> for UdpClient {
+    /// Create udp client from iterator.
+    fn from_iter<I: IntoIterator<Item=SocketAddr>>(iter: I) -> Self {
         let mut hosts = Vec::new();
 
         for i in iter {
