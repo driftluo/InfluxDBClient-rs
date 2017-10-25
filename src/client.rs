@@ -363,9 +363,9 @@ impl Client {
 }
 
 impl Default for Client {
-    /// connecting for default database `test` and host `htt://localhost:8086`
+    /// connecting for default database `test` and host `http://localhost:8086`
     fn default() -> Self {
-        Client::new(String::from("localhost:8086"), String::from("test"))
+        Client::new("http://localhost:8086", "test")
     }
 }
 

@@ -6,22 +6,22 @@ pub(crate) fn line_serialization(points: Points) -> String {
     for point in points.point {
         line.push(escape_measurement(point.measurement));
 
-        for (tag, value) in point.tags.iter() {
+        for (tag, value) in point.tags.into_iter() {
             line.push(",".to_string());
             line.push(escape_keys_and_tags(tag.to_string()));
             line.push("=".to_string());
 
             match value {
-                &Value::String(ref s) => line.push(escape_keys_and_tags(s.to_string())),
-                &Value::Float(ref f) => line.push(f.to_string()),
-                &Value::Integer(ref i) => line.push(i.to_string() + "i"),
-                &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
+                Value::String(s) => line.push(escape_keys_and_tags(s.to_string())),
+                Value::Float(f) => line.push(f.to_string()),
+                Value::Integer(i) => line.push(i.to_string() + "i"),
+                Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
             }
         }
 
         let mut was_first = true;
 
-        for (field, value) in point.fields.iter() {
+        for (field, value) in point.fields.into_iter() {
             line.push({
                 if was_first {
                     was_first = false;
@@ -32,10 +32,10 @@ pub(crate) fn line_serialization(points: Points) -> String {
             line.push("=".to_string());
 
             match value {
-                &Value::String(ref s) => line.push(escape_string_field_value(s.to_string())),
-                &Value::Float(ref f) => line.push(f.to_string()),
-                &Value::Integer(ref i) => line.push(i.to_string() + "i"),
-                &Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
+                Value::String(s) => line.push(escape_string_field_value( s.to_string())),
+                Value::Float(f) => line.push(f.to_string()),
+                Value::Integer(i) => line.push(i.to_string() + "i"),
+                Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
             }
         }
 
@@ -80,7 +80,7 @@ fn escape_measurement(value: String) -> String {
 
 #[inline]
 fn escape_string_field_value(value: String) -> String {
-    value.replace("\"", "\\\"")
+    format!("\"{}\"", value.replace("\"", "\\\""))
 }
 
 #[cfg(test)]
@@ -95,7 +95,7 @@ mod test {
         point.add_tag("sometag", Value::Boolean(false));
         let points = Points::new(point);
 
-        assert_eq!(line_serialization(points), "test,sometag=false somefield=65\n")
+        assert_eq!(line_serialization(points), "test,sometag=false somefield=65i\n")
     }
 
     #[test]
@@ -110,7 +110,7 @@ mod test {
 
     #[test]
     fn escape_string_field_value_test() {
-        assert_eq!(escape_string_field_value(String::from("\"foo")) , "\\\"foo")
+        assert_eq!(escape_string_field_value(String::from("\"foo")) , "\"\\\"foo\"")
     }
 
     #[test]

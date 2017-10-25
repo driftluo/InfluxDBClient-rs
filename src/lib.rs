@@ -35,6 +35,9 @@
 //!     println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
 //! }
 //! ```
+
+#![deny(warnings)]
+
 extern crate hyper;
 extern crate serde_json;
 extern crate hyper_native_tls;
