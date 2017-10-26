@@ -2,13 +2,20 @@ use std::fmt;
 use std::io;
 use hyper;
 
+/// The error of influxdb client
 #[derive(Debug)]
 pub enum Error {
+    /// Syntax error, some is bug, some is SQL error. If it's a bug, welcome to PR.
     SyntaxError(String),
+    /// Invalid credentials
     InvalidCredentials(String),
+    /// The specified database does not exist
     DataBaseDoesNotExist(String),
+    /// The specified retention policy does not exist
     RetentionPolicyDoesNotExist(String),
+    /// Some error on build url or io.
     Communication(String),
+    /// Some other error, I don't expect
     Unknow(String),
 }
 

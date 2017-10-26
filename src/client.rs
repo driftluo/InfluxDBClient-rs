@@ -12,6 +12,7 @@ use std::iter::FromIterator;
 use std::net::{ ToSocketAddrs, SocketAddr };
 use { error, serialization, Precision, Point, Points, Node, Query };
 
+/// The client to influxdb
 #[derive(Debug)]
 pub struct Client {
     host: String,
@@ -69,6 +70,11 @@ impl Client {
     pub fn set_tls(mut self, connector: Option<TLSOption>) -> Self {
         self.client = HttpClient::new_with_option(connector);
         self
+    }
+
+    /// View the current db name
+    pub fn get_db(&self) -> String {
+        self.db.to_owned()
     }
 
     /// Query whether the corresponding database exists, return bool
@@ -140,6 +146,7 @@ impl Client {
         }
     }
 
+    /// Drop measurement
     pub fn drop_measurement(&self, measurement: &str) -> Result<(), error::Error> {
         let sql = format!("Drop measurement {}", serialization::quote_ident(measurement));
 
@@ -467,13 +474,17 @@ impl UdpClient {
             .to_socket_addrs().unwrap().next().unwrap())
     }
 
+    /// View current hosts
+    pub fn get_host(&self) -> Vec<SocketAddr> {
+        self.hosts.to_owned()
+    }
+
     /// Send Points to influxdb.
     pub fn write_points(&self, points: Points) -> Result<(), error::Error> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
 
         let line = serialization::line_serialization(points);
         let line = line.as_bytes();
-
         socket.send_to(&line, self.hosts.as_slice())?;
 
         Ok(())
