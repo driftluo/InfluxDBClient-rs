@@ -14,6 +14,16 @@ This project has been able to run properly, PR is welcome.
 
 ## Usage
 
+### Recommend
+
+```
+[dependencies]
+influx_db_client = "^0.3.0"
+
+[patch.crates-io]
+influx_db_client = { git = 'https://github.com/driftluo/InfluxDBClient-rs' }
+```
+
 ### http
 
 ```
