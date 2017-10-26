@@ -12,78 +12,70 @@ This is an InfluxDB driver for Rust.
 
 This project has been able to run properly, PR is welcome.
 
-### Todo
-
-- [x] Multiple write and single write.
-- [x] Get the version number and check if the database exists.
-- [x] Support query syntax.
-- [x] Support query post syntax.
-- [x] Add some easy-to-use functions.
-- [x] Add the type of error
-
 ## Usage
 
-### Single thread
+### Recommend
 
 ```
+[dependencies]
+influx_db_client = "^0.3.0"
+
+[patch.crates-io]
+influx_db_client = { git = 'https://github.com/driftluo/InfluxDBClient-rs' }
+```
+
+### http
+
+```
+#[macro_use]
 extern crate influx_db_client;
 
-use influx_db_client::{InfluxdbClient, Point, Points, Value, InfluxClient, Precision};
+use influx_db_client::{Client, Point, Points, Value, Precision};
 
 fn main() {
-    let mut client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
-    client.set_write_timeout(10);
-    client.set_read_timeout(10);
+    // default with "http://127.0.0.1:8086", db with "test"
+    let client = Client::default().set_authentication("root", "root");
 
-    let mut point = Point::new("test");
-    point.add_field("somefield", Value::Integer(65));
+    let mut point = point!("test1");
+    point.add_field("foo", Value::String("bar".to_string()));
+    point.add_field("integer", Value::Integer(11));
+    point.add_field("float", Value::Float(22.3));
+    point.add_field("'boolean'", Value::Boolean(false));
 
-    let mut point1 = Point::new("test2");
-    point1.add_field("somefield", Value::Float(12.2));
-    point1.add_tag("sometag", Value::Boolean(false));
+    let mut point1 = Point::new("test1");
+    point1.add_tag("tags", Value::String(String::from("'=213w")));
+    point1.add_tag("number", Value::Integer(12));
+    point1.add_tag("float", Value::Float(12.6));
+    point1.add_field("fd", Value::String("'3'".to_string()));
 
-    let mut points = Points::new(point);
-    points.push(point1);
+    let points = points!(point1, point);
 
     // if Precision is None, the default is second
     // Multiple write
-    let res = client.write_points(points, Some(Precision::Microseconds), None).unwrap();
-    let version = client.get_version().unwrap();
-    println!("{}\nversion:{}", res, version)
+    let _ = client.write_points(points, Some(Precision::Seconds), None).unwrap();
 
-    // query
-    let res = client.query("select * from test", None).unwrap();
-    println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
+    // query, it's type is Option<Vec<Node>>
+    let res = client.query("select * from test1", None).unwrap();
+    println!("{:?}", res.unwrap()[0].series)
 }
 ```
 
-### Multi-threaded
+### udp
 
-You can use the smart pointer, such as Arc, Mutex, Refcell, to wrap the influxdbclient, or move the client into the thread as shown below.
-
-```
+```Rust
+#[macro_use]
 extern crate influx_db_client;
 
-use influx_db_client::{InfluxdbClient, Point, Value, InfluxClient};
-use std::thread;
+use influx_db_client::{UdpClient, Point, Value};
 
-#[allow(unused_must_use)]
 fn main() {
-    let mut client = InfluxdbClient::new("http://localhost:8086", "test", "root", "root");
-    client.set_write_timeout(10);
-    client.set_read_timeout(10);
-    let client1 = client.clone();
+    let mut udp = UdpClient::new("127.0.0.1:8089");
+    udp.add_host("127.0.0.1:8090");
 
-    let handle = thread::spawn(move || {
-        let mut point = Point::new("test");
-        point.add_field("'somefield'", Value::String(String::from("1")));
-        client1.write_point(point, None, None).unwrap();
-    });
+    let mut point = point!("test");
+    point.add_field("foo", Value::String(String::from("bar")));
 
-    handle.join();
-
-    let res = client.query("select * from test", None).unwrap();
-    println!("{:?}", res[0].get("series").unwrap()[0].get("values"))
+    let _ = udp.write_point(point).unwrap();
 }
 ```
 
