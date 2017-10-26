@@ -26,7 +26,7 @@ influx_db_client = { git = 'https://github.com/driftluo/InfluxDBClient-rs' }
 
 ### http
 
-```
+```Rust
 #[macro_use]
 extern crate influx_db_client;
 
