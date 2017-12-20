@@ -6,7 +6,6 @@ use influx_db_client::{ Client, UdpClient, Point, Points, Precision, Value, TLSO
 use native_tls::{ TlsConnector, Certificate };
 use std::thread::sleep;
 use std::time::Duration;
-use std::collections::HashMap;
 use std::io::Read;
 use std::fs::File;
 
