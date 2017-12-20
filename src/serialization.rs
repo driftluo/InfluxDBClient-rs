@@ -32,7 +32,7 @@ pub(crate) fn line_serialization(points: Points) -> String {
             line.push("=".to_string());
 
             match value {
-                Value::String(s) => line.push(escape_string_field_value( s.to_string())),
+                Value::String(s) => line.push(escape_string_field_value( s.to_string().replace("\\\"", "\\\\\""))),
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
                 Value::Boolean(b) => line.push({ if b { "true".to_string() } else { "false".to_string() } })
