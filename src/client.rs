@@ -1,7 +1,7 @@
 use serde_json;
 use hyper::client::Client as hyper_client;
 use hyper::net::HttpsConnector;
-use hyper::client::{ RequestBuilder, };
+use hyper::client::RequestBuilder;
 use hyper_native_tls::native_tls::TlsConnector;
 use hyper_native_tls::NativeTlsClient;
 use hyper::Url;
@@ -9,8 +9,8 @@ use std::io::Read;
 use std::time::Duration;
 use std::net::UdpSocket;
 use std::iter::FromIterator;
-use std::net::{ ToSocketAddrs, SocketAddr };
-use { error, serialization, Precision, Point, Points, Node, Query };
+use std::net::{SocketAddr, ToSocketAddrs};
+use {error, serialization, Node, Point, Points, Precision, Query};
 
 /// The client to influxdb
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub struct Client {
     host: String,
     db: String,
     authentication: Option<(String, String)>,
-    client: HttpClient
+    client: HttpClient,
 }
 
 unsafe impl Send for Client {}
@@ -26,12 +26,14 @@ unsafe impl Send for Client {}
 impl Client {
     /// Create a new influxdb client with http
     pub fn new<T>(host: T, db: T) -> Self
-        where T: ToString {
+    where
+        T: ToString,
+    {
         Client {
             host: host.to_string(),
             db: db.to_string(),
             authentication: None,
-            client: HttpClient::default()
+            client: HttpClient::default(),
         }
     }
 
@@ -41,7 +43,7 @@ impl Client {
             host: host.to_string(),
             db: db.to_string(),
             authentication: None,
-            client: HttpClient::new_with_option(tls_option)
+            client: HttpClient::new_with_option(tls_option),
         }
     }
 
@@ -56,12 +58,18 @@ impl Client {
     }
 
     /// Change the client's database
-    pub fn swith_database<T>(&mut self, database: T) where T: ToString {
+    pub fn switch_database<T>(&mut self, database: T)
+    where
+        T: ToString,
+    {
         self.db = database.to_string();
     }
 
     /// Change the client's user
-    pub fn set_authentication<T>(mut self, user: T, passwd: T) -> Self where T: Into<String> {
+    pub fn set_authentication<T>(mut self, user: T, passwd: T) -> Self
+    where
+        T: Into<String>,
+    {
         self.authentication = Some((user.into(), passwd.into()));
         self
     }
@@ -94,20 +102,30 @@ impl Client {
         match res.status_raw().0 {
             204 => match res.headers.get_raw("X-Influxdb-Version") {
                 Some(i) => Some(String::from_utf8(i[0].to_vec()).unwrap()),
-                None => Some(String::from("Don't know"))
+                None => Some(String::from("Don't know")),
             },
             _ => None,
         }
     }
 
     /// Write a point to the database
-    pub fn write_point(&self, point: Point, precision: Option<Precision>, rp: Option<&str>) -> Result<(), error::Error> {
+    pub fn write_point(
+        &self,
+        point: Point,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> Result<(), error::Error> {
         let points = Points::new(point);
         self.write_points(points, precision, rp)
     }
 
     /// Write multiple points to the database
-    pub fn write_points(&self, points: Points, precision: Option<Precision>, rp: Option<&str>) -> Result<(), error::Error> {
+    pub fn write_points(
+        &self,
+        points: Points,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> Result<(), error::Error> {
         let line = serialization::line_serialization(points);
 
         let mut param = vec![("db", self.db.as_str())];
@@ -131,28 +149,39 @@ impl Client {
         match res.status_raw().0 {
             204 => Ok(()),
             400 => Err(error::Error::SyntaxError(serialization::conversion(err))),
-            401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
-            404 => Err(error::Error::DataBaseDoesNotExist(serialization::conversion(err))),
+            401 | 403 => Err(error::Error::InvalidCredentials(
+                "Invalid authentication credentials.".to_string(),
+            )),
+            404 => Err(error::Error::DataBaseDoesNotExist(
+                serialization::conversion(err),
+            )),
             500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
-            _ => Err(error::Error::Unknow("There is something wrong".to_string()))
+            _ => Err(error::Error::Unknow("There is something wrong".to_string())),
         }
     }
 
     /// Query and return data, the data type is `Option<Vec<Node>>`
-    pub fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Option<Vec<Node>>, error::Error> {
+    pub fn query(
+        &self,
+        q: &str,
+        epoch: Option<Precision>,
+    ) -> Result<Option<Vec<Node>>, error::Error> {
         match self.query_raw(q, epoch) {
             Ok(t) => Ok(t.results),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Drop measurement
     pub fn drop_measurement(&self, measurement: &str) -> Result<(), error::Error> {
-        let sql = format!("Drop measurement {}", serialization::quote_ident(measurement));
+        let sql = format!(
+            "Drop measurement {}",
+            serialization::quote_ident(measurement)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -162,7 +191,7 @@ impl Client {
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -172,7 +201,7 @@ impl Client {
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -180,17 +209,23 @@ impl Client {
     pub fn create_user(&self, user: &str, passwd: &str, admin: bool) -> Result<(), error::Error> {
         let sql: String = {
             if admin {
-                format!("Create user {0} with password {1} with all privileges",
-                        serialization::quote_ident(user), serialization::quote_literal(passwd))
+                format!(
+                    "Create user {0} with password {1} with all privileges",
+                    serialization::quote_ident(user),
+                    serialization::quote_literal(passwd)
+                )
             } else {
-                format!("Create user {0} WITH password {1}", serialization::quote_ident(user),
-                        serialization::quote_literal(passwd))
+                format!(
+                    "Create user {0} WITH password {1}",
+                    serialization::quote_ident(user),
+                    serialization::quote_literal(passwd)
+                )
             }
         };
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -200,64 +235,91 @@ impl Client {
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Change the password of an existing user.
     pub fn set_user_password(&self, user: &str, passwd: &str) -> Result<(), error::Error> {
-        let sql = format!("Set password for {}={}", serialization::quote_ident(user),
-                          serialization::quote_literal(passwd));
+        let sql = format!(
+            "Set password for {}={}",
+            serialization::quote_ident(user),
+            serialization::quote_literal(passwd)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Grant cluster administration privileges to a user.
     pub fn grant_admin_privileges(&self, user: &str) -> Result<(), error::Error> {
-        let sql = format!("Grant all privileges to {}", serialization::quote_ident(user));
+        let sql = format!(
+            "Grant all privileges to {}",
+            serialization::quote_ident(user)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Revoke cluster administration privileges from a user.
     pub fn revoke_admin_privileges(&self, user: &str) -> Result<(), error::Error> {
-        let sql = format!("Revoke all privileges from {}", serialization::quote_ident(user));
+        let sql = format!(
+            "Revoke all privileges from {}",
+            serialization::quote_ident(user)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Grant a privilege on a database to a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    pub fn grant_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(), error::Error> {
-        let sql = format!("Grant {} on {} to {}", privilege, serialization::quote_ident(db),
-                          serialization::quote_ident(user));
+    pub fn grant_privilege(
+        &self,
+        user: &str,
+        db: &str,
+        privilege: &str,
+    ) -> Result<(), error::Error> {
+        let sql = format!(
+            "Grant {} on {} to {}",
+            privilege,
+            serialization::quote_ident(db),
+            serialization::quote_ident(user)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
     /// Revoke a privilege on a database from a user.
     /// :param privilege: the privilege to grant, one of 'read', 'write'
     /// or 'all'. The string is case-insensitive
-    pub fn revoke_privilege(&self, user: &str, db: &str, privilege: &str) -> Result<(), error::Error> {
-        let sql = format!("Revoke {0} on {1} from {2}", privilege, serialization::quote_ident(db),
-                          serialization::quote_ident(user));
+    pub fn revoke_privilege(
+        &self,
+        user: &str,
+        db: &str,
+        privilege: &str,
+    ) -> Result<(), error::Error> {
+        let sql = format!(
+            "Revoke {0} on {1} from {2}",
+            privilege,
+            serialization::quote_ident(db),
+            serialization::quote_ident(user)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -268,7 +330,14 @@ impl Client {
     ///  respectively. For infinite retention – meaning the data will
     ///  never be deleted – use 'INF' for duration.
     ///  The minimum retention period is 1 hour.
-    pub fn create_retention_policy(&self, name: &str, duration: &str, replication: &str, default: bool, db: Option<&str>) -> Result<(), error::Error> {
+    pub fn create_retention_policy(
+        &self,
+        name: &str,
+        duration: &str,
+        replication: &str,
+        default: bool,
+        db: Option<&str>,
+    ) -> Result<(), error::Error> {
         let database = {
             if let Some(t) = db {
                 t
@@ -279,17 +348,27 @@ impl Client {
 
         let sql: String = {
             if default {
-                format!("Create retention policy {} on {} duration {} replication {} default",
-                        serialization::quote_ident(name), serialization::quote_ident(database), duration, replication)
+                format!(
+                    "Create retention policy {} on {} duration {} replication {} default",
+                    serialization::quote_ident(name),
+                    serialization::quote_ident(database),
+                    duration,
+                    replication
+                )
             } else {
-                format!("Create retention policy {} on {} duration {} replication {}",
-                        serialization::quote_ident(name), serialization::quote_ident(database), duration, replication)
+                format!(
+                    "Create retention policy {} on {} duration {} replication {}",
+                    serialization::quote_ident(name),
+                    serialization::quote_ident(database),
+                    duration,
+                    replication
+                )
             }
         };
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -303,12 +382,15 @@ impl Client {
             }
         };
 
-        let sql = format!("Drop retention policy {} on {}", serialization::quote_ident(name),
-                          serialization::quote_ident(database));
+        let sql = format!(
+            "Drop retention policy {} on {}",
+            serialization::quote_ident(name),
+            serialization::quote_ident(database)
+        );
 
         match self.query_raw(&sql, None) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 
@@ -318,14 +400,16 @@ impl Client {
 
         match epoch {
             Some(ref t) => param.push(("epoch", t.to_str())),
-            None => ()
+            None => (),
         }
 
         let url = self.build_url("query", Some(param));
 
         let q_lower = q.to_lowercase();
         let mut res = {
-            if q_lower.starts_with("select") && !q_lower.contains("into") || q_lower.starts_with("show") {
+            if q_lower.starts_with("select") && !q_lower.contains("into")
+                || q_lower.starts_with("show")
+            {
                 self.client.get(url).send()?
             } else {
                 self.client.post(url).send()?
@@ -339,9 +423,13 @@ impl Client {
 
         match res.status_raw().0 {
             200 => Ok(json_data),
-            400 => Err(error::Error::SyntaxError(serialization::conversion(json_data.error.unwrap()))),
-            401 | 403 => Err(error::Error::InvalidCredentials("Invalid authentication credentials.".to_string())),
-            _ => Err(error::Error::Unknow("There is something wrong".to_string()))
+            400 => Err(error::Error::SyntaxError(serialization::conversion(
+                json_data.error.unwrap(),
+            ))),
+            401 | 403 => Err(error::Error::InvalidCredentials(
+                "Invalid authentication credentials.".to_string(),
+            )),
+            _ => Err(error::Error::Unknow("There is something wrong".to_string())),
         }
     }
 
@@ -386,7 +474,9 @@ pub struct TLSOption {
 impl TLSOption {
     /// Create a new Tls_option
     pub fn new(connector: TlsConnector) -> Self {
-        TLSOption { connector: Some(connector) }
+        TLSOption {
+            connector: Some(connector),
+        }
     }
 
     fn get_connector(self) -> TlsConnector {
@@ -396,14 +486,14 @@ impl TLSOption {
 
 #[derive(Debug)]
 struct HttpClient {
-    client: hyper_client
+    client: hyper_client,
 }
 
 impl HttpClient {
     /// Constructs a new `HttpClient`.
     fn new() -> Self {
         HttpClient {
-            client: hyper_client::new()
+            client: hyper_client::new(),
         }
     }
 
@@ -421,7 +511,7 @@ impl HttpClient {
         };
 
         HttpClient {
-            client: hyper_client::with_connector(connector)
+            client: hyper_client::with_connector(connector),
         }
     }
 
@@ -463,15 +553,15 @@ impl UdpClient {
     /// panic when T can't convert to SocketAddr
     pub fn new<T: Into<String>>(address: T) -> Self {
         UdpClient {
-            hosts: vec![address.into().to_socket_addrs().unwrap().next().unwrap()]
+            hosts: vec![address.into().to_socket_addrs().unwrap().next().unwrap()],
         }
     }
 
     /// add udp host.
     /// panic when T can't convert to SocketAddr
     pub fn add_host<T: Into<String>>(&mut self, address: T) {
-        self.hosts.push(address.into()
-            .to_socket_addrs().unwrap().next().unwrap())
+        self.hosts
+            .push(address.into().to_socket_addrs().unwrap().next().unwrap())
     }
 
     /// View current hosts
@@ -492,22 +582,20 @@ impl UdpClient {
 
     /// Send Point to influxdb.
     pub fn write_point(&self, point: Point) -> Result<(), error::Error> {
-        let points = Points{ point: vec![point] };
+        let points = Points { point: vec![point] };
         self.write_points(points)
     }
 }
 
 impl FromIterator<SocketAddr> for UdpClient {
     /// Create udp client from iterator.
-    fn from_iter<I: IntoIterator<Item=SocketAddr>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = SocketAddr>>(iter: I) -> Self {
         let mut hosts = Vec::new();
 
         for i in iter {
             hosts.push(i);
         }
 
-        UdpClient {
-            hosts
-        }
+        UdpClient { hosts }
     }
 }
