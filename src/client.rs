@@ -138,7 +138,7 @@ impl Client {
         }
     }
 
-    /// Query and return data, the data type is `Vec<serde_json::Value>`
+    /// Query and return data, the data type is `Option<Vec<Node>>`
     pub fn query(&self, q: &str, epoch: Option<Precision>) -> Result<Option<Vec<Node>>, error::Error> {
         match self.query_raw(q, epoch) {
             Ok(t) => Ok(t.results),
