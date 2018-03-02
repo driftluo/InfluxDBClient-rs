@@ -63,11 +63,11 @@
 #![deny(missing_docs)]
 
 extern crate hyper;
-extern crate serde_json;
 extern crate hyper_native_tls;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_json;
 
 /// Serialization module
 pub mod serialization;
@@ -78,6 +78,6 @@ pub mod client;
 /// Points and Query Data Deserialize
 pub mod keys;
 
-pub use client::{ Client, UdpClient, TLSOption };
-pub use keys::{ Point, Precision, Points, Value, Node, Query, Series };
+pub use client::{Client, TLSOption, UdpClient};
+pub use keys::{Node, Point, Points, Precision, Query, Series, Value};
 pub use error::Error;

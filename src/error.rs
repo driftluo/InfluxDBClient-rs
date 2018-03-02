@@ -27,7 +27,7 @@ impl fmt::Display for Error {
             Error::DataBaseDoesNotExist(ref t) => write!(f, "{}", t),
             Error::RetentionPolicyDoesNotExist(ref t) => write!(f, "{}", t),
             Error::Communication(ref t) => write!(f, "{}", t),
-            Error::Unknow(ref t) => write!(f, "{}", t)
+            Error::Unknow(ref t) => write!(f, "{}", t),
         }
     }
 }

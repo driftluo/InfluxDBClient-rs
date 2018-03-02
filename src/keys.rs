@@ -12,7 +12,7 @@ pub enum Value {
     /// Integer
     Integer(i64),
     /// Bool
-    Boolean(bool)
+    Boolean(bool),
 }
 
 /// influxdb point
@@ -25,7 +25,7 @@ pub struct Point {
     /// fields
     pub fields: HashMap<String, Value>,
     /// timestamp
-    pub timestamp: Option<i64>
+    pub timestamp: Option<i64>,
 }
 
 impl Point {
@@ -59,7 +59,7 @@ impl Point {
 #[derive(Debug)]
 pub struct Points {
     /// points
-    pub point: Vec<Point>
+    pub point: Vec<Point>,
 }
 
 impl Points {
@@ -67,9 +67,7 @@ impl Points {
     pub fn new(point: Point) -> Points {
         let mut points = Vec::new();
         points.push(point);
-        Points {
-            point: points,
-        }
+        Points { point: points }
     }
 
     /// Insert point into already existing points
@@ -79,23 +77,19 @@ impl Points {
 
     /// Create a multi Points more directly
     pub fn create_new(points: Vec<Point>) -> Points {
-        Points {
-            point: points
-        }
+        Points { point: points }
     }
 }
 
 impl FromIterator<Point> for Points {
-    fn from_iter<T: IntoIterator<Item=Point>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = Point>>(iter: T) -> Self {
         let mut points = Vec::new();
 
         for point in iter {
             points.push(point);
         }
 
-        Points {
-            point: points,
-        }
+        Points { point: points }
     }
 }
 
@@ -114,7 +108,7 @@ pub struct Node {
     /// id
     pub statement_id: Option<u64>,
     /// series
-    pub series: Option<Vec<Series>>
+    pub series: Option<Vec<Series>>,
 }
 
 /// Query data series
@@ -127,7 +121,7 @@ pub struct Series {
     /// field names and time
     pub columns: Vec<String>,
     /// values
-    pub values: Vec<Vec<serde_json::Value>>
+    pub values: Vec<Vec<serde_json::Value>>,
 }
 
 /// Time accuracy
@@ -144,7 +138,7 @@ pub enum Precision {
     /// m
     Minutes,
     /// h
-    Hours
+    Hours,
 }
 
 impl Precision {
@@ -156,7 +150,7 @@ impl Precision {
             Precision::Milliseconds => "ms",
             Precision::Seconds => "s",
             Precision::Minutes => "m",
-            Precision::Hours => "h"
+            Precision::Hours => "h",
         }
     }
 }
