@@ -1,6 +1,7 @@
 # InfluxDBClient-rs
 
 ![image](https://img.shields.io/crates/v/influx_db_client.svg)
+[![Build Status](https://travis-ci.org/driftluo/InfluxDBClient-rs.svg?branch=master)](https://travis-ci.org/driftluo/InfluxDBClient-rs)
 
 A easy-use client to influxdb
 

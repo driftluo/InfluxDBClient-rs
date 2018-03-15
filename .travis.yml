@@ -14,6 +14,7 @@ before_install:
 script:
   - cargo build --verbose --all
   - cargo test create_and_delete_database
+  - cargo test use_points
   
 after_script:
   - cat $HOME/influx.log
