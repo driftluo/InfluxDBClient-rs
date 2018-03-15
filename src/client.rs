@@ -120,9 +120,9 @@ impl Client {
     }
 
     /// Write multiple points to the database
-    pub fn write_points(
+    pub fn write_points<T: Iterator<Item = Point>>(
         &self,
-        points: Points,
+        points: T,
         precision: Option<Precision>,
         rp: Option<&str>,
     ) -> Result<(), error::Error> {
