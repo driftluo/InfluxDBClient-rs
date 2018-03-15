@@ -1,0 +1,16 @@
+sudo: false
+
+language: rust
+
+rust:
+  - stable
+cache: cargo
+
+before_install:
+    - wget https://dl.influxdata.com/influxdb/releases/influxdb_1.5.0_amd64.deb
+    - sudo dpkg -i influxdb_1.5.0_amd64.deb
+    - sudo systemctl start influxdb
+
+script:
+  - cargo build --verbose --all
+  - cargo test create_and_delete_database
