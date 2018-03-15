@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use serde_json;
+use std::iter::Iterator;
 
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
 #[derive(Debug, Clone)]
@@ -93,6 +94,14 @@ impl FromIterator<Point> for Points {
     }
 }
 
+impl Iterator for Points {
+    type Item = Point;
+
+    fn next(&mut self) -> Option<Point> {
+        self.point.pop()
+    }
+}
+
 /// Query data
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Query {
@@ -155,6 +164,7 @@ impl Precision {
     }
 }
 
+/// Create Points by macro
 #[macro_export]
 macro_rules! points {
     ($($x:expr),+) => {
@@ -166,6 +176,7 @@ macro_rules! points {
     };
 }
 
+/// Create Point by macro
 #[macro_export]
 macro_rules! point {
     ($x:expr) => {

@@ -2,8 +2,8 @@
 extern crate influx_db_client;
 extern crate native_tls;
 
-use influx_db_client::{ Client, UdpClient, Point, Points, Precision, Value, TLSOption };
-use native_tls::{ TlsConnector, Certificate };
+use influx_db_client::{Client, Point, Points, Precision, TLSOption, UdpClient, Value};
+use native_tls::{Certificate, TlsConnector};
 use std::thread::sleep;
 use std::time::Duration;
 use std::io::Read;
@@ -27,7 +27,9 @@ fn create_and_delete_measurement() {
     point.add_field("float", Value::Float(22.3));
     point.add_field("'boolean'", Value::Boolean(false));
 
-    let _ = client.write_point(point,Some(Precision::Seconds), None).unwrap();
+    let _ = client
+        .write_point(point, Some(Precision::Seconds), None)
+        .unwrap();
 
     let _ = client.drop_measurement("temporary").unwrap();
 }
@@ -35,6 +37,7 @@ fn create_and_delete_measurement() {
 #[test]
 fn use_points() {
     let client = Client::default().set_authentication("root", "root");
+    let _ = client.create_database("test");
     let mut point = Point::new("test1");
     point.add_field("foo", Value::String("bar".to_string()));
     point.add_field("integer", Value::Integer(11));
@@ -49,12 +52,15 @@ fn use_points() {
 
     let points = Points::create_new(vec![point1, point]);
 
-    let _ = client.write_points(points, Some(Precision::Seconds), None).unwrap();
+    let _ = client
+        .write_points(points, Some(Precision::Seconds), None)
+        .unwrap();
 
     let _ = sleep(Duration::from_secs(3));
 
     let _ = client.drop_measurement("test1").unwrap();
     let _ = client.drop_measurement("test2").unwrap();
+    let _ = client.drop_database("test");
 }
 
 #[test]
@@ -104,9 +110,9 @@ fn use_udp() {
     let _ = udp.write_point(point).unwrap();
 
     let _ = sleep(Duration::from_secs(1));
-    client.swith_database("udp");
+    client.switch_database("udp");
     let _ = client.drop_measurement("test").unwrap();
-    client.swith_database("telegraf");
+    client.switch_database("telegraf");
     let _ = client.drop_measurement("test").unwrap();
 }
 
@@ -117,7 +123,9 @@ fn use_https() {
     ca_cert_file.read_to_end(&mut ca_cert_buffer).unwrap();
 
     let mut builder = TlsConnector::builder().unwrap();
-    builder.add_root_certificate(Certificate::from_der(&ca_cert_buffer).unwrap()).unwrap();
+    builder
+        .add_root_certificate(Certificate::from_der(&ca_cert_buffer).unwrap())
+        .unwrap();
 
     let tls_connector = TLSOption::new(builder.build().unwrap());
 

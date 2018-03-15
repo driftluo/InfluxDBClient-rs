@@ -1,9 +1,9 @@
-use {Points, Value};
+use {Point, Value};
 
 /// Resolve the points to line protocol format
-pub(crate) fn line_serialization(points: Points) -> String {
+pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String {
     let mut line = Vec::new();
-    for point in points.point {
+    for point in points {
         line.push(escape_measurement(point.measurement));
 
         for (tag, value) in point.tags.into_iter() {
