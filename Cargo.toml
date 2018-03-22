@@ -19,3 +19,4 @@ serde = "^1.0.15"
 
 [dev-dependencies]
 native-tls = "^0.1.4"
+tempdir = "0.3"
