@@ -17,16 +17,20 @@
 //!         let client = Client::default().set_authentication("root", "root");
 //!
 //!         let mut point = point!("test1");
-//!         point.add_field("foo", Value::String("bar".to_string()));
-//!         point.add_field("integer", Value::Integer(11));
-//!         point.add_field("float", Value::Float(22.3));
-//!         point.add_field("'boolean'", Value::Boolean(false));
+//!         point
+//!             .add_field("foo", Value::String("bar".to_string()))
+//!             .add_field("integer", Value::Integer(11))
+//!             .add_field("float", Value::Float(22.3))
+//!             .add_field("'boolean'", Value::Boolean(false));
 //!
-//!         let mut point1 = point!("test2");
-//!         point1.add_tag("tags", Value::String(String::from("'=213w")));
-//!         point1.add_tag("number", Value::Integer(12));
-//!         point1.add_tag("float", Value::Float(12.6));
-//!         point1.add_field("fd", Value::String("'3'".to_string()));
+//!         let point1 = Point::new("test1")
+//!             .add_tag("tags", Value::String(String::from("\\\"fda")))
+//!             .add_tag("number", Value::Integer(12))
+//!             .add_tag("float", Value::Float(12.6))
+//!             .add_field("fd", Value::String("'3'".to_string()))
+//!             .add_field("quto", Value::String("\\\"fda".to_string()))
+//!             .add_field("quto1", Value::String("\"fda".to_string()))
+//!             .to_owned();
 //!
 //!         let points = points!(point1, point);
 //!

@@ -24,11 +24,12 @@ fn create_and_delete_measurement() {
     let mut client = Client::default().set_authentication("root", "root");
     client.switch_database("test_create_and_delete_measurement");
     let _ = client.create_database(client.get_db().as_str()).unwrap();
-    let mut point = Point::new("temporary");
-    point.add_field("foo", Value::String("bar".to_string()));
-    point.add_field("integer", Value::Integer(11));
-    point.add_field("float", Value::Float(22.3));
-    point.add_field("'boolean'", Value::Boolean(false));
+    let point = Point::new("temporary")
+        .add_field("foo", Value::String("bar".to_string()))
+        .add_field("integer", Value::Integer(11))
+        .add_field("float", Value::Float(22.3))
+        .add_field("'boolean'", Value::Boolean(false))
+        .to_owned();
 
     let _ = client
         .write_point(point, Some(Precision::Seconds), None)
@@ -43,17 +44,19 @@ fn use_points() {
     let mut client = Client::default().set_authentication("root", "root");
     client.switch_database("test_use_points");
     let _ = client.create_database(client.get_db().as_str()).unwrap();
-    let mut point = Point::new("test1");
-    point.add_field("foo", Value::String("bar".to_string()));
-    point.add_field("integer", Value::Integer(11));
-    point.add_field("float", Value::Float(22.3));
-    point.add_field("'boolean'", Value::Boolean(false));
+    let point = Point::new("test1")
+        .add_field("foo", Value::String("bar".to_string()))
+        .add_field("integer", Value::Integer(11))
+        .add_field("float", Value::Float(22.3))
+        .add_field("'boolean'", Value::Boolean(false))
+        .to_owned();
 
-    let mut point1 = Point::new("test2");
-    point1.add_tag("tags", Value::String(String::from("'=213w")));
-    point1.add_tag("number", Value::Integer(12));
-    point1.add_tag("float", Value::Float(12.6));
-    point1.add_field("fd", Value::String("'3'".to_string()));
+    let point1 = Point::new("test2")
+        .add_tag("tags", Value::String(String::from("'=213w")))
+        .add_tag("number", Value::Integer(12))
+        .add_tag("float", Value::Float(12.6))
+        .add_field("fd", Value::String("'3'".to_string()))
+        .to_owned();
 
     let points = Points::create_new(vec![point1, point]);
 
@@ -74,8 +77,9 @@ fn query() {
     let mut client = Client::default().set_authentication("root", "root");
     client.switch_database(dbname);
     let _ = client.create_database(client.get_db().as_str()).unwrap();
-    let mut point = Point::new("test3");
-    point.add_field("foo", Value::String("bar".to_string()));
+    let mut point = Point::new("test3")
+        .add_field("foo", Value::String("bar".to_string()))
+        .to_owned();
     let mut point1 = point.clone();
     point.add_timestamp(1508981970);
     point1.add_timestamp(1508982026);
@@ -124,7 +128,7 @@ fn use_udp() {
 
 #[test]
 fn use_https() {
-    use std::io::{Write};
+    use std::io::Write;
     use std::fs;
     use std::thread;
     use std::time::Duration;
@@ -134,10 +138,7 @@ fn use_https() {
 
     // https://docs.influxdata.com/influxdb/v1.5/administration/https_setup/#setup-https-with-a-self-signed-certificate
     let dir = TempDir::new("test_use_https").unwrap();
-    let dir_path: String = dir.path()
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let dir_path: String = dir.path().to_str().unwrap().to_owned();
     let tls_key_filename = "influxdb-selfsigned.key";
     let tls_key_path: String = dir.path()
         .join(tls_key_filename)
@@ -151,12 +152,21 @@ fn use_https() {
         .unwrap()
         .to_owned();
     let output = Command::new("openssl")
-        .args(&["req", "-x509", "-nodes",
-                "-newkey", "rsa:2048",
-                "-days", "10",
-                "-subj", "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=localhost",
-                "-keyout", tls_key_path.as_str(),
-                "-out", tls_cert_path.as_str()])
+        .args(&[
+            "req",
+            "-x509",
+            "-nodes",
+            "-newkey",
+            "rsa:2048",
+            "-days",
+            "10",
+            "-subj",
+            "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=localhost",
+            "-keyout",
+            tls_key_path.as_str(),
+            "-out",
+            tls_cert_path.as_str(),
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -170,7 +180,8 @@ fn use_https() {
         .to_owned();
 
     let http_port = 9086;
-    let influxdb_config_content = format!(r#"
+    let influxdb_config_content = format!(
+        r#"
 bind-address = "127.0.0.1:{rpc_port}"
 [meta]
   dir = "{dir}/meta"
@@ -183,11 +194,12 @@ bind-address = "127.0.0.1:{rpc_port}"
   https-certificate = "{tls_cert_path}"
   https-private-key = "{tls_key_path}"
 "#,
-                                          rpc_port=9088,
-                                          http_port=http_port,
-                                          dir=dir_path,
-                                          tls_cert_path=tls_cert_path,
-                                          tls_key_path=tls_key_path);
+        rpc_port = 9088,
+        http_port = http_port,
+        dir = dir_path,
+        tls_cert_path = tls_cert_path,
+        tls_key_path = tls_key_path
+    );
     let mut f = fs::File::create(influxdb_config_path.as_str()).unwrap();
     f.write_all(influxdb_config_content.as_bytes()).unwrap();
     f.sync_all().unwrap();

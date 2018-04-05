@@ -4,7 +4,7 @@ use hyper;
 use std::error::Error as StdError;
 
 /// The error of influxdb client
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Error {
     /// Syntax error, some is bug, some is SQL error. If it's a bug, welcome to PR.
     SyntaxError(String),
