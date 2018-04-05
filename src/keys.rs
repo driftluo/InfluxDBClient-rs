@@ -4,20 +4,21 @@ use serde_json;
 use std::iter::Iterator;
 
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum Value {
     /// string
     String(String),
-    /// float
-    Float(f64),
     /// Integer
     Integer(i64),
+    /// float
+    Float(f64),
     /// Bool
     Boolean(bool),
 }
 
 /// influxdb point
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Point {
     /// measurement
     pub measurement: String,
@@ -41,23 +42,26 @@ impl Point {
     }
 
     /// Add a tag and its value
-    pub fn add_tag<T: ToString>(&mut self, tag: T, value: Value) {
+    pub fn add_tag<T: ToString>(&mut self, tag: T, value: Value) -> &mut Self {
         self.tags.insert(tag.to_string(), value);
+        self
     }
 
     /// Add a field and its value
-    pub fn add_field<T: ToString>(&mut self, field: T, value: Value) {
+    pub fn add_field<T: ToString>(&mut self, field: T, value: Value) -> &mut Self {
         self.fields.insert(field.to_string(), value);
+        self
     }
 
     /// Set the specified timestamp
-    pub fn add_timestamp(&mut self, timestamp: i64) {
+    pub fn add_timestamp(&mut self, timestamp: i64) -> &mut Self {
         self.timestamp = Some(timestamp);
+        self
     }
 }
 
 /// Points
-#[derive(Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Points {
     /// points
     pub point: Vec<Point>,
@@ -72,8 +76,9 @@ impl Points {
     }
 
     /// Insert point into already existing points
-    pub fn push(&mut self, point: Point) {
-        self.point.push(point)
+    pub fn push(&mut self, point: Point) -> &mut Self {
+        self.point.push(point);
+        self
     }
 
     /// Create a multi Points more directly

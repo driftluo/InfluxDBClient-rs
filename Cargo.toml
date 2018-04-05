@@ -1,6 +1,6 @@
 [package]
 name = "influx_db_client"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["piaoliu <441594700@qq.com>"]
 documentation = "https://docs.rs/influx_db_client/"
 repository = "https://github.com/driftluo/InfluxDBClient-rs"
@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["influxdb"]
 categories = ["database"]
 license = "MIT"
+include = ["Cargo.toml", "src/*.rs", "README.md", "LICENSE"]
+
+[badges]
+travis-ci = { repository = "driftluo/InfluxDBClient-rs" }
 
 [dependencies]
 hyper = "^0.10.13"
