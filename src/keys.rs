@@ -116,6 +116,9 @@ pub struct Query {
     pub error: Option<String>,
 }
 
+/// Chunked Query data
+pub type ChunkedQuery<'de, T> = serde_json::StreamDeserializer<'de, T, Query>;
+
 /// Query data node
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {

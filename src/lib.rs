@@ -83,5 +83,5 @@ pub mod client;
 pub mod keys;
 
 pub use client::{Client, TLSOption, UdpClient};
-pub use keys::{Node, Point, Points, Precision, Query, Series, Value};
+pub use keys::{Node, Point, Points, Precision, Query, ChunkedQuery, Series, Value};
 pub use error::Error;
