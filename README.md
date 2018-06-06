@@ -19,7 +19,7 @@ This project has been able to run properly, PR is welcome.
 
 ```
 [dependencies]
-influx_db_client = "^0.3.2"
+influx_db_client = "^0.3.4"
 
 [patch.crates-io]
 influx_db_client = { git = 'https://github.com/driftluo/InfluxDBClient-rs' }
