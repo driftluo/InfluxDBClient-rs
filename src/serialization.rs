@@ -4,15 +4,15 @@ use {Point, Value};
 pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String {
     let mut line = Vec::new();
     for point in points {
-        line.push(escape_measurement(point.measurement));
+        line.push(escape_measurement(&point.measurement));
 
-        for (tag, value) in point.tags.into_iter() {
+        for (tag, value) in point.tags {
             line.push(",".to_string());
-            line.push(escape_keys_and_tags(tag.to_string()));
+            line.push(escape_keys_and_tags(&tag));
             line.push("=".to_string());
 
             match value {
-                Value::String(s) => line.push(escape_keys_and_tags(s.to_string())),
+                Value::String(s) => line.push(escape_keys_and_tags(&s)),
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
                 Value::Boolean(b) => line.push({
@@ -27,7 +27,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
 
         let mut was_first = true;
 
-        for (field, value) in point.fields.into_iter() {
+        for (field, value) in point.fields {
             line.push(
                 {
                     if was_first {
@@ -38,12 +38,12 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                     }
                 }.to_string(),
             );
-            line.push(escape_keys_and_tags(field.to_string()));
+            line.push(escape_keys_and_tags(&field));
             line.push("=".to_string());
 
             match value {
                 Value::String(s) => line.push(escape_string_field_value(
-                    s.to_string().replace("\\\"", "\\\\\""),
+                    &s.replace("\\\"", "\\\\\""),
                 )),
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
@@ -57,12 +57,9 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
             }
         }
 
-        match point.timestamp {
-            Some(t) => {
-                line.push(" ".to_string());
-                line.push(t.to_string());
-            }
-            _ => {}
+        if let Some(t) = point.timestamp {
+            line.push(" ".to_string());
+            line.push(t.to_string());
         }
 
         line.push("\n".to_string())
@@ -88,7 +85,7 @@ pub(crate) fn quote_literal(value: &str) -> String {
 }
 
 #[inline]
-pub(crate) fn conversion(value: String) -> String {
+pub(crate) fn conversion(value: &str) -> String {
     value
         .replace("\'", "")
         .replace("\"", "")
@@ -98,7 +95,7 @@ pub(crate) fn conversion(value: String) -> String {
 }
 
 #[inline]
-fn escape_keys_and_tags(value: String) -> String {
+fn escape_keys_and_tags(value: &str) -> String {
     value
         .replace(",", "\\,")
         .replace("=", "\\=")
@@ -106,12 +103,12 @@ fn escape_keys_and_tags(value: String) -> String {
 }
 
 #[inline]
-fn escape_measurement(value: String) -> String {
+fn escape_measurement(value: &str) -> String {
     value.replace(",", "\\,").replace(" ", "\\ ")
 }
 
 #[inline]
-fn escape_string_field_value(value: String) -> String {
+fn escape_string_field_value(value: &str) -> String {
     format!("\"{}\"", value.replace("\"", "\\\""))
 }
 
@@ -136,25 +133,19 @@ mod test {
     #[test]
     fn escape_keys_and_tags_test() {
         assert_eq!(
-            escape_keys_and_tags(String::from("foo, hello=world")),
+            escape_keys_and_tags("foo, hello=world"),
             "foo\\,\\ hello\\=world"
         )
     }
 
     #[test]
     fn escape_measurement_test() {
-        assert_eq!(
-            escape_measurement(String::from("foo, hello")),
-            "foo\\,\\ hello"
-        )
+        assert_eq!(escape_measurement("foo, hello"), "foo\\,\\ hello")
     }
 
     #[test]
     fn escape_string_field_value_test() {
-        assert_eq!(
-            escape_string_field_value(String::from("\"foo")),
-            "\"\\\"foo\""
-        )
+        assert_eq!(escape_string_field_value("\"foo"), "\"\\\"foo\"")
     }
 
     #[test]

@@ -5,10 +5,10 @@ extern crate tempdir;
 
 use influx_db_client::{Client, Point, Points, Precision, TLSOption, UdpClient, Value};
 use native_tls::{Certificate, TlsConnector};
+use std::fs::File;
+use std::io::Read;
 use std::thread::sleep;
 use std::time::Duration;
-use std::io::Read;
-use std::fs::File;
 
 #[test]
 fn create_and_delete_database() {
@@ -128,11 +128,11 @@ fn use_udp() {
 
 #[test]
 fn use_https() {
-    use std::io::Write;
     use std::fs;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
     use std::thread;
     use std::time::Duration;
-    use std::process::{Command, Stdio};
 
     use tempdir::TempDir;
 
@@ -140,13 +140,15 @@ fn use_https() {
     let dir = TempDir::new("test_use_https").unwrap();
     let dir_path: String = dir.path().to_str().unwrap().to_owned();
     let tls_key_filename = "influxdb-selfsigned.key";
-    let tls_key_path: String = dir.path()
+    let tls_key_path: String = dir
+        .path()
         .join(tls_key_filename)
         .to_str()
         .unwrap()
         .to_owned();
     let tls_cert_filename = "influxdb-selfsigned.cert";
-    let tls_cert_path: String = dir.path()
+    let tls_cert_path: String = dir
+        .path()
         .join(tls_cert_filename)
         .to_str()
         .unwrap()
@@ -166,14 +168,14 @@ fn use_https() {
             tls_key_path.as_str(),
             "-out",
             tls_cert_path.as_str(),
-        ])
-        .stdout(Stdio::null())
+        ]).stdout(Stdio::null())
         .stderr(Stdio::null())
         .output()
         .unwrap();
     println!("openssl output: {:?}", output);
 
-    let influxdb_config_path: String = dir.path()
+    let influxdb_config_path: String = dir
+        .path()
         .join("influxdb.conf")
         .to_str()
         .unwrap()
@@ -223,8 +225,7 @@ bind-address = "127.0.0.1:{rpc_port}"
     ca_cert_file.read_to_end(&mut ca_cert_buffer).unwrap();
 
     let mut builder = TlsConnector::builder();
-    builder
-        .add_root_certificate(Certificate::from_pem(&ca_cert_buffer).unwrap());
+    builder.add_root_certificate(Certificate::from_pem(&ca_cert_buffer).unwrap());
 
     let tls_connector = TLSOption::new(builder.build().unwrap());
 

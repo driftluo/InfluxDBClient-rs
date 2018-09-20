@@ -15,14 +15,11 @@ This project has been able to run properly, PR is welcome.
 
 ## Usage
 
-### Recommend
+### Use
 
 ```
 [dependencies]
-influx_db_client = "^0.3.4"
-
-[patch.crates-io]
-influx_db_client = { git = 'https://github.com/driftluo/InfluxDBClient-rs' }
+influx_db_client = "^0.3.5"
 ```
 
 ### http
@@ -88,7 +85,7 @@ fn main() {
 
 This is the [API Document](https://docs.influxdata.com/influxdb/v1.2/tools/api/), it may apply to version 1.0 or higher.
 
-I have tested it in version 1.0.2 and 1.3.5.
+I have tested it in version 1.0.2/1.3.5/1.5.
 
 ## Thanks
 
