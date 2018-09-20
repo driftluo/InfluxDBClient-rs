@@ -222,10 +222,9 @@ bind-address = "127.0.0.1:{rpc_port}"
     let mut ca_cert_buffer = Vec::new();
     ca_cert_file.read_to_end(&mut ca_cert_buffer).unwrap();
 
-    let mut builder = TlsConnector::builder().unwrap();
+    let mut builder = TlsConnector::builder();
     builder
-        .add_root_certificate(Certificate::from_pem(&ca_cert_buffer).unwrap())
-        .unwrap();
+        .add_root_certificate(Certificate::from_pem(&ca_cert_buffer).unwrap());
 
     let tls_connector = TLSOption::new(builder.build().unwrap());
 
