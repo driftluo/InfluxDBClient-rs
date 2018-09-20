@@ -73,15 +73,15 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
-/// Serialization module
-pub mod serialization;
-/// Error module
-pub mod error;
 /// All API on influxdb client, Including udp, http
 pub mod client;
+/// Error module
+pub mod error;
 /// Points and Query Data Deserialize
 pub mod keys;
+/// Serialization module
+pub mod serialization;
 
 pub use client::{Client, TLSOption, UdpClient};
-pub use keys::{Node, Point, Points, Precision, Query, ChunkedQuery, Series, Value};
 pub use error::Error;
+pub use keys::{ChunkedQuery, Node, Point, Points, Precision, Query, Series, Value};

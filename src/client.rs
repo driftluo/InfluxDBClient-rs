@@ -1,18 +1,18 @@
-use serde_json;
-use serde_json::de::IoRead as SerdeIoRead;
 use hyper::client::Client as hyper_client;
+use hyper::client::RequestBuilder;
 use hyper::client::Response;
 use hyper::net::HttpsConnector;
-use hyper::client::RequestBuilder;
+use hyper::Url;
 use hyper_native_tls::native_tls::TlsConnector;
 use hyper_native_tls::NativeTlsClient;
-use hyper::Url;
+use serde_json;
+use serde_json::de::IoRead as SerdeIoRead;
 use std::io::Read;
-use std::time::Duration;
-use std::net::UdpSocket;
 use std::iter::FromIterator;
+use std::net::UdpSocket;
 use std::net::{SocketAddr, ToSocketAddrs};
-use {error, serialization, Node, Point, Points, Precision, Query, ChunkedQuery};
+use std::time::Duration;
+use {error, serialization, ChunkedQuery, Node, Point, Points, Precision, Query};
 
 /// The client to influxdb
 #[derive(Debug)]
@@ -137,10 +137,9 @@ impl Client {
             None => param.push(("precision", "s")),
         };
 
-        match rp {
-            Some(t) => param.push(("rp", t)),
-            None => (),
-        };
+        if let Some(t) = rp {
+            param.push(("rp", t))
+        }
 
         let url = self.build_url("write", Some(param));
 
@@ -150,12 +149,12 @@ impl Client {
 
         match res.status_raw().0 {
             204 => Ok(()),
-            400 => Err(error::Error::SyntaxError(serialization::conversion(err))),
+            400 => Err(error::Error::SyntaxError(serialization::conversion(&err))),
             401 | 403 => Err(error::Error::InvalidCredentials(
                 "Invalid authentication credentials.".to_string(),
             )),
             404 => Err(error::Error::DataBaseDoesNotExist(
-                serialization::conversion(err),
+                serialization::conversion(&err),
             )),
             500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
             _ => Err(error::Error::Unknow("There is something wrong".to_string())),
@@ -180,7 +179,7 @@ impl Client {
         q: &str,
         epoch: Option<Precision>,
     ) -> Result<ChunkedQuery<SerdeIoRead<Response>>, error::Error> {
-        return self.query_raw_chunked(q, epoch);
+        self.query_raw_chunked(q, epoch)
     }
 
     /// Drop measurement
@@ -405,12 +404,16 @@ impl Client {
         }
     }
 
-    fn send_request(&self, q: &str, epoch: Option<Precision>, chunked: bool) -> Result<Response, error::Error> {
+    fn send_request(
+        &self,
+        q: &str,
+        epoch: Option<Precision>,
+        chunked: bool,
+    ) -> Result<Response, error::Error> {
         let mut param = vec![("db", self.db.as_str()), ("q", q)];
 
-        match epoch {
-            Some(ref t) => param.push(("epoch", t.to_str())),
-            None => (),
+        if let Some(ref t) = epoch {
+            param.push(("epoch", t.to_str()))
         }
 
         if chunked {
@@ -423,9 +426,9 @@ impl Client {
         let mut res = {
             if q_lower.starts_with("select") && !q_lower.contains("into")
                 || q_lower.starts_with("show")
-                {
-                    self.client.get(url).send()?
-                } else {
+            {
+                self.client.get(url).send()?
+            } else {
                 self.client.post(url).send()?
             }
         };
@@ -438,9 +441,9 @@ impl Client {
                 let json_data: Query = serde_json::from_str(&context).unwrap();
 
                 Err(error::Error::SyntaxError(serialization::conversion(
-                    json_data.error.unwrap(),
+                    &json_data.error.unwrap(),
                 )))
-            },
+            }
             401 | 403 => Err(error::Error::InvalidCredentials(
                 "Invalid authentication credentials.".to_string(),
             )),
@@ -456,14 +459,18 @@ impl Client {
         let _ = response.read_to_string(&mut context);
 
         let json_data: Query = serde_json::from_str(&context).unwrap();
-        return Ok(json_data);
+        Ok(json_data)
     }
 
     /// Query and return to the native json structure
-    fn query_raw_chunked(&self, q: &str, epoch: Option<Precision>) -> Result<ChunkedQuery<SerdeIoRead<Response>>, error::Error> {
+    fn query_raw_chunked(
+        &self,
+        q: &str,
+        epoch: Option<Precision>,
+    ) -> Result<ChunkedQuery<SerdeIoRead<Response>>, error::Error> {
         let response = self.send_request(q, epoch, true)?;
         let stream = serde_json::Deserializer::from_reader(response).into_iter::<Query>();
-        return Ok(stream);
+        Ok(stream)
     }
 
     /// Constructs the full URL for an API call.
@@ -472,12 +479,9 @@ impl Client {
 
         let mut authentication = Vec::new();
 
-        match self.authentication {
-            Some(ref t) => {
-                authentication.push(("u", &t.0));
-                authentication.push(("p", &t.1));
-            }
-            None => {}
+        if let Some(ref t) = self.authentication {
+            authentication.push(("u", &t.0));
+            authentication.push(("p", &t.1));
         }
 
         let url = Url::parse_with_params(url.as_str(), authentication).unwrap();

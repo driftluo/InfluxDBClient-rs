@@ -1,6 +1,6 @@
+use serde_json;
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use serde_json;
 use std::iter::Iterator;
 
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
@@ -142,7 +142,7 @@ pub struct Series {
 }
 
 /// Time accuracy
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Precision {
     /// n
     Nanoseconds,
@@ -187,29 +187,23 @@ macro_rules! points {
 /// Create Point by macro
 #[macro_export]
 macro_rules! point {
-    ($x:expr) => {
-        {
-            Point::new($x)
+    ($x:expr) => {{
+        Point::new($x)
+    }};
+    ($x:expr, $y:expr, $z:expr) => {{
+        Point {
+            measurement: String::from($x),
+            tags: $y,
+            fields: $z,
+            timestamp: None,
         }
-    };
-    ($x:expr, $y:expr, $z:expr) => {
-        {
-            Point {
-                measurement: String::from($x),
-                tags: $y,
-                fields: $z,
-                timestamp: None
-            }
+    }};
+    ($x:expr, $y:expr, $z:expr, $a:expr) => {{
+        Point {
+            measurement: String::from($x),
+            tags: $y,
+            fields: $z,
+            timestamp: Some($a),
         }
-    };
-    ($x:expr, $y:expr, $z:expr, $a:expr) => {
-        {
-            Point {
-                measurement: String::from($x),
-                tags: $y,
-                fields: $z,
-                timestamp: Some($a)
-            }
-        }
-    };
+    }};
 }

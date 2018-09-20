@@ -1,7 +1,7 @@
-use std::fmt;
-use std::io;
 use hyper;
 use std::error::Error as StdError;
+use std::fmt;
+use std::io;
 
 /// The error of influxdb client
 #[derive(Debug, Deserialize, Serialize)]
