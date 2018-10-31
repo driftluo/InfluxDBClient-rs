@@ -90,23 +90,29 @@ impl Client {
     /// Query whether the corresponding database exists, return bool
     pub fn ping(&self) -> bool {
         let url = self.build_url("ping", None);
-        let res = self.client.get(url).send().unwrap();
-        match res.status_raw().0 {
-            204 => true,
-            _ => false,
+        if let Ok(res) = self.client.get(url).send() {
+            match res.status_raw().0 {
+                204 => true,
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 
     /// Query the version of the database and return the version number
     pub fn get_version(&self) -> Option<String> {
         let url = self.build_url("ping", None);
-        let res = self.client.get(url).send().unwrap();
-        match res.status_raw().0 {
-            204 => match res.headers.get_raw("X-Influxdb-Version") {
-                Some(i) => Some(String::from_utf8(i[0].to_vec()).unwrap()),
-                None => Some(String::from("Don't know")),
-            },
-            _ => None,
+        if let Ok(res) = self.client.get(url).send() {
+            match res.status_raw().0 {
+                204 => match res.headers.get_raw("X-Influxdb-Version") {
+                    Some(i) => Some(String::from_utf8(i[0].to_vec()).unwrap()),
+                    None => Some(String::from("Don't know")),
+                },
+                _ => None,
+            }
+        } else {
+            None
         }
     }
 
