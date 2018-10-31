@@ -106,7 +106,7 @@ impl Client {
         if let Ok(res) = self.client.get(url).send() {
             match res.status_raw().0 {
                 204 => match res.headers.get_raw("X-Influxdb-Version") {
-                    Some(i) => Some(String::from_utf8(i[0].to_vec()).unwrap()),
+                    Some(i) => String::from_utf8(i[0].to_vec()).ok(),
                     None => Some(String::from("Don't know")),
                 },
                 _ => None,

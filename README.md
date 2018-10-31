@@ -19,7 +19,7 @@ This project has been able to run properly, PR is welcome.
 
 ```
 [dependencies]
-influx_db_client = "^0.3.5"
+influx_db_client = "^0.3.6"
 ```
 
 ### http
