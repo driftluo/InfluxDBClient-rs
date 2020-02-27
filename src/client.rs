@@ -29,21 +29,21 @@ impl Client {
     /// Create a new influxdb client with http
     pub fn new<T>(host: T, db: T) -> Self
     where
-        T: ToString,
+        T: Into<String>,
     {
         Client {
-            host: host.to_string(),
-            db: db.to_string(),
+            host: host.into(),
+            db: db.into(),
             authentication: None,
             client: HttpClient::default(),
         }
     }
 
     /// Create a new influxdb client with https
-    pub fn new_with_option<T: ToString>(host: T, db: T, tls_option: Option<TLSOption>) -> Self {
+    pub fn new_with_option<T: Into<String>>(host: T, db: T, tls_option: Option<TLSOption>) -> Self {
         Client {
-            host: host.to_string(),
-            db: db.to_string(),
+            host: host.into(),
+            db: db.into(),
             authentication: None,
             client: HttpClient::new_with_option(tls_option),
         }
@@ -62,9 +62,9 @@ impl Client {
     /// Change the client's database
     pub fn switch_database<T>(&mut self, database: T)
     where
-        T: ToString,
+        T: Into<String>,
     {
-        self.db = database.to_string();
+        self.db = database.into();
     }
 
     /// Change the client's user

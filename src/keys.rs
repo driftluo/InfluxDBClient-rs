@@ -42,14 +42,14 @@ impl Point {
     }
 
     /// Add a tag and its value
-    pub fn add_tag<T: ToString>(&mut self, tag: T, value: Value) -> &mut Self {
-        self.tags.insert(tag.to_string(), value);
+    pub fn add_tag<T: Into<String>>(&mut self, tag: T, value: Value) -> &mut Self {
+        self.tags.insert(tag.into(), value);
         self
     }
 
     /// Add a field and its value
-    pub fn add_field<T: ToString>(&mut self, field: T, value: Value) -> &mut Self {
-        self.fields.insert(field.to_string(), value);
+    pub fn add_field<T: Into<String>>(&mut self, field: T, value: Value) -> &mut Self {
+        self.fields.insert(field.into(), value);
         self
     }
 
