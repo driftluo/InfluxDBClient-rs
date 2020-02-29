@@ -168,7 +168,8 @@ fn use_https() {
             tls_key_path.as_str(),
             "-out",
             tls_cert_path.as_str(),
-        ]).stdout(Stdio::null())
+        ])
+        .stdout(Stdio::null())
         .stderr(Stdio::null())
         .output()
         .unwrap();

@@ -1,4 +1,3 @@
-use hyper;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io;
@@ -39,8 +38,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<hyper::Error> for Error {
-    fn from(err: hyper::Error) -> Self {
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
         Error::Communication(format!("{}", err))
     }
 }
