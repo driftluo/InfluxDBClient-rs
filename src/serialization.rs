@@ -1,4 +1,4 @@
-use {Point, Value};
+use crate::{Point, Value};
 
 /// Resolve the points to line protocol format
 pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String {
@@ -36,15 +36,16 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                     } else {
                         ","
                     }
-                }.to_string(),
+                }
+                .to_string(),
             );
             line.push(escape_keys_and_tags(&field));
             line.push("=".to_string());
 
             match value {
-                Value::String(s) => line.push(escape_string_field_value(
-                    &s.replace("\\\"", "\\\\\""),
-                )),
+                Value::String(s) => {
+                    line.push(escape_string_field_value(&s.replace("\\\"", "\\\\\"")))
+                }
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
                 Value::Boolean(b) => line.push({
@@ -115,7 +116,7 @@ fn escape_string_field_value(value: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use {Point, Points};
+    use crate::{Point, Points};
 
     #[test]
     fn line_serialization_test() {

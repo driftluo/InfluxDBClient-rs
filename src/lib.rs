@@ -66,12 +66,8 @@
 #![deny(warnings)]
 #![deny(missing_docs)]
 
-extern crate hyper;
-extern crate hyper_native_tls;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
 
 /// All API on influxdb client, Including udp, http
 pub mod client;
@@ -80,8 +76,8 @@ pub mod error;
 /// Points and Query Data Deserialize
 pub mod keys;
 /// Serialization module
-pub mod serialization;
+pub(crate) mod serialization;
 
-pub use client::{Client, TLSOption, UdpClient};
+pub use client::{Client, UdpClient};
 pub use error::Error;
 pub use keys::{ChunkedQuery, Node, Point, Points, Precision, Query, Series, Value};

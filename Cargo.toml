@@ -10,17 +10,19 @@ keywords = ["influxdb"]
 categories = ["database"]
 license = "MIT"
 include = ["Cargo.toml", "src/*.rs", "README.md", "LICENSE"]
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "driftluo/InfluxDBClient-rs" }
 
 [dependencies]
-hyper = "^0.10.13"
-hyper-native-tls = "^0.3.0"
+reqwest = { version = "^0.10", features = ["json"] }
 serde_json = '^1.0.2'
 serde_derive = "^1.0.15"
 serde = "^1.0.15"
+bytes = "^0.5"
+futures = "^0.3"
 
 [dev-dependencies]
-native-tls = "^0.2.1"
 tempdir = "0.3"
+tokio = "0.2"
