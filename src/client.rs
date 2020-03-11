@@ -10,7 +10,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use crate::{error, serialization, ChunkedQuery, Node, Point, Points, Precision, Query};
 
 /// The client to influxdb
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {
     host: String,
     db: String,
