@@ -120,9 +120,9 @@ mod test {
 
     #[test]
     fn line_serialization_test() {
-        let mut point = Point::new("test");
-        point.add_field("somefield", Value::Integer(65));
-        point.add_tag("sometag", Value::Boolean(false));
+        let point = Point::new("test")
+            .add_field("somefield", Value::Integer(65))
+            .add_tag("sometag", Value::Boolean(false));
         let points = Points::new(point);
 
         assert_eq!(

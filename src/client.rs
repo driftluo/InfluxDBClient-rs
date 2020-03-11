@@ -2,10 +2,7 @@ use bytes::Bytes;
 use futures::prelude::*;
 use reqwest::{Client as HttpClient, Response, Url};
 use serde_json::de::IoRead;
-use std::io::Cursor;
-use std::iter::FromIterator;
-use std::net::UdpSocket;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::{io::Cursor, iter::FromIterator, net::SocketAddr, net::UdpSocket};
 
 use crate::{error, serialization, ChunkedQuery, Node, Point, Points, Precision, Query};
 
@@ -63,8 +60,8 @@ impl Client {
     }
 
     /// View the current db name
-    pub fn get_db(&self) -> String {
-        self.db.to_owned()
+    pub fn get_db(&self) -> &str {
+        self.db.as_str()
     }
 
     /// Query whether the corresponding database exists, return bool
@@ -466,8 +463,8 @@ impl Client {
 
         let url = Url::parse_with_params(url.as_str(), authentication).unwrap();
 
-        if param.is_some() {
-            Url::parse_with_params(url.as_str(), param.unwrap()).unwrap()
+        if let Some(param) = param {
+            Url::parse_with_params(url.as_str(), param).unwrap()
         } else {
             url
         }
@@ -488,23 +485,20 @@ pub struct UdpClient {
 
 impl UdpClient {
     /// Create a new udp client.
-    /// panic when T can't convert to SocketAddr
-    pub fn new<T: Into<String>>(address: T) -> Self {
+    pub fn new(address: SocketAddr) -> Self {
         UdpClient {
-            hosts: vec![address.into().to_socket_addrs().unwrap().next().unwrap()],
+            hosts: vec![address],
         }
     }
 
     /// add udp host.
-    /// panic when T can't convert to SocketAddr
-    pub fn add_host<T: Into<String>>(&mut self, address: T) {
-        self.hosts
-            .push(address.into().to_socket_addrs().unwrap().next().unwrap())
+    pub fn add_host(&mut self, address: SocketAddr) {
+        self.hosts.push(address)
     }
 
     /// View current hosts
-    pub fn get_host(&self) -> Vec<SocketAddr> {
-        self.hosts.to_owned()
+    pub fn get_host(&self) -> &[SocketAddr] {
+        self.hosts.as_ref()
     }
 
     /// Send Points to influxdb.
