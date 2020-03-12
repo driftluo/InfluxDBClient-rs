@@ -42,19 +42,19 @@ impl Point {
     }
 
     /// Add a tag and its value
-    pub fn add_tag<T: Into<String>>(&mut self, tag: T, value: Value) -> &mut Self {
+    pub fn add_tag<T: Into<String>>(mut self, tag: T, value: Value) -> Self {
         self.tags.insert(tag.into(), value);
         self
     }
 
     /// Add a field and its value
-    pub fn add_field<T: Into<String>>(&mut self, field: T, value: Value) -> &mut Self {
+    pub fn add_field<T: Into<String>>(mut self, field: T, value: Value) -> Self {
         self.fields.insert(field.into(), value);
         self
     }
 
     /// Set the specified timestamp
-    pub fn add_timestamp(&mut self, timestamp: i64) -> &mut Self {
+    pub fn add_timestamp(mut self, timestamp: i64) -> Self {
         self.timestamp = Some(timestamp);
         self
     }
@@ -76,7 +76,7 @@ impl Points {
     }
 
     /// Insert point into already existing points
-    pub fn push(&mut self, point: Point) -> &mut Self {
+    pub fn push(mut self, point: Point) -> Self {
         self.point.push(point);
         self
     }
@@ -134,11 +134,11 @@ pub struct Series {
     /// measurement
     pub name: String,
     /// tag
-    pub tags: Option<serde_json::Map<String, serde_json::Value>>,
+    pub tags: Option<HashMap<String, Value>>,
     /// field names and time
     pub columns: Vec<String>,
     /// values
-    pub values: Vec<Vec<serde_json::Value>>,
+    pub values: Vec<Vec<Value>>,
 }
 
 /// Time accuracy
