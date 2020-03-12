@@ -1,4 +1,6 @@
-use influx_db_client::{point, points, Client, Point, Points, Precision, UdpClient, Value};
+use influx_db_client::{
+    point, points, reqwest::Url, Client, Point, Points, Precision, UdpClient, Value,
+};
 use std::fs::File;
 use std::io::Read;
 use std::thread::sleep;
@@ -242,7 +244,11 @@ bind-address = "127.0.0.1:{rpc_port}"
         .unwrap();
 
     let host = format!("https://localhost:{}", http_port);
-    let client = Client::new_with_client(host.as_str(), "test_use_https", http_client);
+    let client = Client::new_with_client(
+        Url::parse(host.as_str()).unwrap(),
+        "test_use_https",
+        http_client,
+    );
 
     block_on(async {
         client.create_database(client.get_db()).await.unwrap();

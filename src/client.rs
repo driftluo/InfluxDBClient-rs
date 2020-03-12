@@ -9,7 +9,7 @@ use crate::{error, serialization, ChunkedQuery, Node, Point, Points, Precision, 
 /// The client to influxdb
 #[derive(Debug, Clone)]
 pub struct Client {
-    host: String,
+    host: Url,
     db: String,
     authentication: Option<(String, String)>,
     client: HttpClient,
@@ -17,12 +17,12 @@ pub struct Client {
 
 impl Client {
     /// Create a new influxdb client with http
-    pub fn new<T>(host: T, db: T) -> Self
+    pub fn new<T>(host: Url, db: T) -> Self
     where
         T: Into<String>,
     {
         Client {
-            host: host.into(),
+            host,
             db: db.into(),
             authentication: None,
             client: HttpClient::default(),
@@ -30,12 +30,12 @@ impl Client {
     }
 
     /// Create a new influxdb client with custom reqwest's client.
-    pub fn new_with_client<T>(host: T, db: T, client: HttpClient) -> Self
+    pub fn new_with_client<T>(host: Url, db: T, client: HttpClient) -> Self
     where
         T: Into<String>,
     {
         Client {
-            host: host.into(),
+            host,
             db: db.into(),
             authentication: None,
             client,
@@ -452,7 +452,7 @@ impl Client {
 
     /// Constructs the full URL for an API call.
     fn build_url(&self, key: &str, param: Option<Vec<(&str, &str)>>) -> Url {
-        let url = Url::parse(&self.host).unwrap().join(key).unwrap();
+        let url = self.host.join(key).unwrap();
 
         let mut authentication = Vec::new();
 
@@ -474,7 +474,7 @@ impl Client {
 impl Default for Client {
     /// connecting for default database `test` and host `http://localhost:8086`
     fn default() -> Self {
-        Client::new("http://localhost:8086", "test")
+        Client::new(Url::parse("http://localhost:8086").unwrap(), "test")
     }
 }
 
