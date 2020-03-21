@@ -16,7 +16,7 @@ edition = "2018"
 travis-ci = { repository = "driftluo/InfluxDBClient-rs" }
 
 [dependencies]
-reqwest = { version = "^0.10", features = ["json"] }
+reqwest = { version = "^0.10", default-features = false, features = ["json"] }
 serde_json = '^1.0.2'
 serde_derive = "^1.0.15"
 serde = "^1.0.15"
@@ -26,3 +26,11 @@ futures = "^0.3"
 [dev-dependencies]
 tempdir = "0.3"
 tokio = "0.2"
+
+
+[features]
+default = ["reqwest/default-tls"]
+
+
+# For using rustls-tls (and no need for openssl anymore)
+rustls-tls = ["reqwest/rustls-tls"]
