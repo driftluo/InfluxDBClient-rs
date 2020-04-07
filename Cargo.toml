@@ -1,6 +1,6 @@
 [package]
 name = "influx_db_client"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["piaoliu <441594700@qq.com>"]
 documentation = "https://docs.rs/influx_db_client/"
 repository = "https://github.com/driftluo/InfluxDBClient-rs"
@@ -18,8 +18,7 @@ travis-ci = { repository = "driftluo/InfluxDBClient-rs" }
 [dependencies]
 reqwest = { version = "^0.10", default-features = false, features = ["json"] }
 serde_json = '^1.0.2'
-serde_derive = "^1.0.15"
-serde = "^1.0.15"
+serde = { version = "^1.0.15", features = ["derive"] }
 bytes = "^0.5"
 futures = "^0.3"
 

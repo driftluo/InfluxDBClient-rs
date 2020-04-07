@@ -55,9 +55,6 @@
 #![deny(warnings)]
 #![deny(missing_docs)]
 
-#[macro_use]
-extern crate serde_derive;
-
 /// All API on influxdb client, Including udp, http
 pub mod client;
 /// Error module
