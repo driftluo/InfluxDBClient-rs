@@ -135,11 +135,11 @@ pub struct Series {
     /// measurement
     pub name: String,
     /// tag
-    pub tags: Option<HashMap<String, Value>>,
+    pub tags: Option<serde_json::Map<String, serde_json::Value>>,
     /// field names and time
     pub columns: Vec<String>,
     /// values
-    pub values: Vec<Vec<Value>>,
+    pub values: Vec<Vec<serde_json::Value>>,
 }
 
 /// Time accuracy
