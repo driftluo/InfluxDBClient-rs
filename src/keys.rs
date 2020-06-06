@@ -12,6 +12,8 @@ pub enum Value {
     String(String),
     /// Integer
     Integer(i64),
+    /// Integer
+    Unsigned(u64),
     /// float
     Float(f64),
     /// Bool

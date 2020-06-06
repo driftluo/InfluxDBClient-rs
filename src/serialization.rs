@@ -15,6 +15,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                 Value::String(s) => line.push(escape_keys_and_tags(&s)),
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
+                Value::Unsigned(u) => line.push(u.to_string() + "u"),
                 Value::Boolean(b) => line.push({
                     if b {
                         "true".to_string()
@@ -48,6 +49,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                 }
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
+                Value::Unsigned(u) => line.push(u.to_string() + "u"),
                 Value::Boolean(b) => line.push({
                     if b {
                         "true".to_string()
