@@ -12,6 +12,7 @@ pub struct Client {
     host: Url,
     db: String,
     authentication: Option<(String, String)>,
+    jwt_token: Option<String>,
     client: HttpClient,
 }
 
@@ -25,6 +26,7 @@ impl Client {
             host,
             db: db.into(),
             authentication: None,
+            jwt_token: None,
             client: HttpClient::default(),
         }
     }
@@ -38,6 +40,7 @@ impl Client {
             host,
             db: db.into(),
             authentication: None,
+            jwt_token: None,
             client,
         }
     }
@@ -59,6 +62,15 @@ impl Client {
         self
     }
 
+    /// Set the client's jwt token
+    pub fn set_jwt_token<T>(mut self, token: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.jwt_token = Some(token.into());
+        self
+    }
+
     /// View the current db name
     pub fn get_db(&self) -> &str {
         self.db.as_str()
@@ -69,10 +81,7 @@ impl Client {
         let url = self.build_url("ping", None);
         self.client.get(url).send().map(move |res| {
             if let Ok(res) = res {
-                match res.status().as_u16() {
-                    204 => true,
-                    _ => false,
-                }
+                matches!(res.status().as_u16(), 204)
             } else {
                 false
             }
@@ -397,13 +406,19 @@ impl Client {
         let url = self.build_url("query", Some(param));
 
         let q_lower = q.to_lowercase();
-        let resp_future = if q_lower.starts_with("select") && !q_lower.contains("into")
+        let mut builder = if q_lower.starts_with("select") && !q_lower.contains("into")
             || q_lower.starts_with("show")
         {
-            self.client.get(url).send().boxed()
+            self.client.get(url)
         } else {
-            self.client.post(url).send().boxed()
+            self.client.post(url)
         };
+
+        if let Some(ref token) = self.jwt_token {
+            builder = builder.bearer_auth(token);
+        }
+
+        let resp_future = builder.send().boxed();
 
         async move {
             let res = resp_future.await?;
