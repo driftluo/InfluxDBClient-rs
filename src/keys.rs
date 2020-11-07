@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use std::iter::Iterator;
 
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Value {
     /// string
@@ -18,7 +18,7 @@ pub enum Value {
 }
 
 /// influxdb point
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct Point {
     /// measurement
     pub measurement: String,
@@ -61,7 +61,7 @@ impl Point {
 }
 
 /// Points
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Points {
     /// points
     pub point: Vec<Point>,
@@ -108,7 +108,7 @@ impl Iterator for Points {
 }
 
 /// Query data
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct Query {
     /// query results
     pub results: Option<Vec<Node>>,
@@ -120,7 +120,7 @@ pub struct Query {
 pub type ChunkedQuery<'de, T> = serde_json::StreamDeserializer<'de, T, Query>;
 
 /// Query data node
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct Node {
     /// id
     pub statement_id: Option<u64>,
@@ -129,7 +129,7 @@ pub struct Node {
 }
 
 /// Query data series
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct Series {
     /// measurement
     pub name: String,
@@ -142,7 +142,7 @@ pub struct Series {
 }
 
 /// Time accuracy
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Precision {
     /// n
     Nanoseconds,
