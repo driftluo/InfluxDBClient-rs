@@ -4,7 +4,7 @@ use std::fmt;
 use std::io;
 
 /// The error of influxdb client
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Error {
     /// Syntax error, some is bug, some is SQL error. If it's a bug, welcome to PR.
     SyntaxError(String),
