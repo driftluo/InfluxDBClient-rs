@@ -132,7 +132,7 @@ pub struct Node {
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct Series {
     /// measurement
-    pub name: String,
+    pub name: Option<String>,
     /// tag
     pub tags: Option<serde_json::Map<String, serde_json::Value>>,
     /// field names and time
