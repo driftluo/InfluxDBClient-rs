@@ -138,7 +138,7 @@ pub struct Series {
     /// field names and time
     pub columns: Vec<String>,
     /// values
-    pub values: Vec<Vec<serde_json::Value>>,
+    pub values: Option<Vec<Vec<serde_json::Value>>>,
 }
 
 /// Time accuracy
