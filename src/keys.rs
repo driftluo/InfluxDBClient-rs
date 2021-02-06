@@ -207,3 +207,33 @@ macro_rules! point {
         }
     }};
 }
+
+impl From<String> for Value {
+    fn from(v: String) -> Value {
+        Value::String(v)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(v: &str) -> Value {
+        Value::String(v.to_string())
+    }
+}
+
+impl From<i64> for Value {
+    fn from(v: i64) -> Value {
+        Value::Integer(v)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(v: f64) -> Value {
+        Value::Float(v)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(v: bool) -> Value {
+        Value::Boolean(v)
+    }
+}
