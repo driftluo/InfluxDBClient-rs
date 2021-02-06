@@ -19,7 +19,7 @@ This project has been able to run properly, PR is welcome.
 
 ```
 [dependencies]
-influx_db_client = "^0.4.0"
+influx_db_client = "^0.5.0"
 ```
 
 ### http
@@ -35,18 +35,18 @@ fn main() {
     let client = Client::default().set_authentication("root", "root");
 
     let point = point!("test1")
-        .add_field("foo", Value::String("bar".to_string()))
-        .add_field("integer", Value::Integer(11))
-        .add_field("float", Value::Float(22.3))
-        .add_field("'boolean'", Value::Boolean(false));
+        .add_field("foo", "bar")
+        .add_field("integer", 11)
+        .add_field("float", 22.3)
+        .add_field("'boolean'", false);
 
     let point1 = Point::new("test1")
-        .add_tag("tags", Value::String(String::from("\\\"fda")))
-        .add_tag("number", Value::Integer(12))
-        .add_tag("float", Value::Float(12.6))
-        .add_field("fd", Value::String("'3'".to_string()))
-        .add_field("quto", Value::String("\\\"fda".to_string()))
-        .add_field("quto1", Value::String("\"fda".to_string()));
+        .add_tag("tags", "\\\"fda")
+        .add_tag("number", 12)
+        .add_tag("float", 12.6)
+        .add_field("fd", "'3'")
+        .add_field("quto", "\\\"fda")
+        .add_field("quto1", "\"fda");
 
     let points = points!(point1, point);
 

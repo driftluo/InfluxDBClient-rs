@@ -1,6 +1,4 @@
-use influx_db_client::{
-    point, points, reqwest::Url, Client, Point, Points, Precision, UdpClient, Value,
-};
+use influx_db_client::{point, points, reqwest::Url, Client, Point, Points, Precision, UdpClient};
 use std::fs::File;
 use std::io::Read;
 use std::thread::sleep;
@@ -28,10 +26,10 @@ fn create_and_delete_measurement() {
         client.switch_database("test_create_and_delete_measurement");
         client.create_database(client.get_db()).await.unwrap();
         let point = Point::new("temporary")
-            .add_field("foo", Value::String("bar".to_string()))
-            .add_field("integer", Value::Integer(11))
-            .add_field("float", Value::Float(22.3))
-            .add_field("'boolean'", Value::Boolean(false));
+            .add_field("foo", "bar")
+            .add_field("integer", 11)
+            .add_field("float", 22.3)
+            .add_field("'boolean'", false);
 
         client
             .write_point(point, Some(Precision::Seconds), None)
@@ -50,16 +48,16 @@ fn use_points() {
         client.switch_database("test_use_points");
         client.create_database(client.get_db()).await.unwrap();
         let point = Point::new("test1")
-            .add_field("foo", Value::String("bar".to_string()))
-            .add_field("integer", Value::Integer(11))
-            .add_field("float", Value::Float(22.3))
-            .add_field("'boolean'", Value::Boolean(false));
+            .add_field("foo", "bar")
+            .add_field("integer", 11)
+            .add_field("float", 22.3)
+            .add_field("'boolean'", false);
 
         let point1 = Point::new("test2")
-            .add_tag("tags", Value::String(String::from("'=213w")))
-            .add_tag("number", Value::Integer(12))
-            .add_tag("float", Value::Float(12.6))
-            .add_field("fd", Value::String("'3'".to_string()));
+            .add_tag("tags", "'=213w")
+            .add_tag("number", 12)
+            .add_tag("float", 12.6)
+            .add_field("fd", "'3'".to_string());
 
         let points = Points::create_new(vec![point1, point]);
 
@@ -83,7 +81,7 @@ fn query() {
         let mut client = Client::default().set_authentication("root", "root");
         client.switch_database(dbname);
         client.create_database(client.get_db()).await.unwrap();
-        let point = Point::new("test3").add_field("foo", Value::String("bar".to_string()));
+        let point = Point::new("test3").add_field("foo", "bar");
         let point1 = point.clone();
         let point = point.add_timestamp(1_508_981_970);
         let point1 = point1.add_timestamp(1_508_982_026);
@@ -102,7 +100,7 @@ fn use_macro() {
         let mut client = Client::default().set_authentication("root", "root");
         client.switch_database("use_macro");
         client.create_database(client.get_db()).await.unwrap();
-        let point = point!("test4").add_field("foo", Value::String("bar".to_string()));
+        let point = point!("test4").add_field("foo", "bar");
         let point1 = point.clone();
         let point = point.add_timestamp(1_508_981_970);
         let point1 = point1.add_timestamp(1_508_982_026);
@@ -123,7 +121,7 @@ fn use_udp() {
         udp.add_host("127.0.0.1:8090".parse().unwrap());
         let mut client = Client::default().set_authentication("root", "root");
 
-        let point = point!("test").add_field("foo", Value::String(String::from("bar")));
+        let point = point!("test").add_field("foo", "bar");
 
         udp.write_point(point).unwrap();
 
@@ -253,7 +251,7 @@ bind-address = "127.0.0.1:{rpc_port}"
     block_on(async {
         client.create_database(client.get_db()).await.unwrap();
 
-        let point = point!("foo").add_field("foo", Value::String(String::from("bar")));
+        let point = point!("foo").add_field("foo", "bar");
 
         client.write_point(point, None, None).await.unwrap();
 

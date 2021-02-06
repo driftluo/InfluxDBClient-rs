@@ -1,0 +1,26 @@
+name: Github Action
+
+on:
+  pull_request:  # trigger on pull requests
+  push:
+    branches:
+      - master    # trigger on push to master
+      - ci
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rust: stable
+    steps:
+      - uses: actions/checkout@v2
+      - name: Test
+        run: |
+          wget https://dl.influxdata.com/influxdb/releases/influxdb_1.8.0_amd64.deb
+          sudo dpkg -i influxdb_1.8.0_amd64.deb
+          sudo /usr/bin/influxd > $HOME/influx.log 2>&1 &
+          cargo test
+          cat $HOME/influx.log

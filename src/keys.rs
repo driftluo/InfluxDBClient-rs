@@ -42,14 +42,14 @@ impl Point {
     }
 
     /// Add a tag and its value
-    pub fn add_tag<T: Into<String>>(mut self, tag: T, value: Value) -> Self {
-        self.tags.insert(tag.into(), value);
+    pub fn add_tag<T: Into<String>, F: Into<Value>>(mut self, tag: T, value: F) -> Self {
+        self.tags.insert(tag.into(), value.into());
         self
     }
 
     /// Add a field and its value
-    pub fn add_field<T: Into<String>>(mut self, field: T, value: Value) -> Self {
-        self.fields.insert(field.into(), value);
+    pub fn add_field<T: Into<String>, F: Into<Value>>(mut self, field: T, value: F) -> Self {
+        self.fields.insert(field.into(), value.into());
         self
     }
 
@@ -206,4 +206,34 @@ macro_rules! point {
             timestamp: Some($a),
         }
     }};
+}
+
+impl From<String> for Value {
+    fn from(v: String) -> Value {
+        Value::String(v)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(v: &str) -> Value {
+        Value::String(v.to_string())
+    }
+}
+
+impl From<i64> for Value {
+    fn from(v: i64) -> Value {
+        Value::Integer(v)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(v: f64) -> Value {
+        Value::Float(v)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(v: bool) -> Value {
+        Value::Boolean(v)
+    }
 }
