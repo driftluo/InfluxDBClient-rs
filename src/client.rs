@@ -155,7 +155,7 @@ impl Client {
                     serialization::conversion(&err),
                 )),
                 500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
-                _ => Err(error::Error::Unknow("There is something wrong".to_string())),
+                status => Err(error::Error::Unknow(format!("Received status code {}", status))),
             }
         }
     }
