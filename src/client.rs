@@ -2,7 +2,12 @@ use bytes::Bytes;
 use futures::prelude::*;
 use reqwest::{Client as HttpClient, Response, Url};
 use serde_json::de::IoRead;
-use std::{io::Cursor, iter::FromIterator, net::SocketAddr, net::UdpSocket};
+use std::{
+    io::Cursor,
+    iter::FromIterator,
+    net::UdpSocket,
+    net::{SocketAddr, ToSocketAddrs},
+};
 
 use crate::{error, serialization, ChunkedQuery, Node, Point, Points, Precision, Query};
 
@@ -155,7 +160,10 @@ impl Client {
                     serialization::conversion(&err),
                 )),
                 500 => Err(error::Error::RetentionPolicyDoesNotExist(err)),
-                status => Err(error::Error::Unknow(format!("Received status code {}", status))),
+                status => Err(error::Error::Unknow(format!(
+                    "Received status code {}",
+                    status
+                ))),
             }
         }
     }
@@ -504,6 +512,14 @@ impl UdpClient {
         UdpClient {
             hosts: vec![address],
         }
+    }
+
+    /// Crates a new UDP client from anything that `ToSocketAddrs` can handle: e.g. a DNS name.
+    pub fn with_host<TSA: ToSocketAddrs>(tsa: TSA) -> Result<Self, error::Error> {
+        let result = Self {
+            hosts: tsa.to_socket_addrs()?.collect(),
+        };
+        Ok(result)
     }
 
     /// add udp host.
