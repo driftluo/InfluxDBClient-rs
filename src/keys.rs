@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::iter::FromIterator;
-use std::iter::Iterator;
+use std::{
+    collections::HashMap,
+    iter::{FromIterator, Iterator},
+    slice::Iter,
+};
 
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
@@ -70,9 +72,7 @@ pub struct Points {
 impl Points {
     /// Create a new points
     pub fn new(point: Point) -> Points {
-        let mut points = Vec::new();
-        points.push(point);
-        Points { point: points }
+        Points { point: vec![point] }
     }
 
     /// Insert point into already existing points
@@ -84,6 +84,15 @@ impl Points {
     /// Create a multi Points more directly
     pub fn create_new(points: Vec<Point>) -> Points {
         Points { point: points }
+    }
+}
+
+impl<'a> IntoIterator for &'a Points {
+    type Item = &'a Point;
+    type IntoIter = Iter<'a, Point>;
+
+    fn into_iter(self) -> Iter<'a, Point> {
+        self.point.iter()
     }
 }
 

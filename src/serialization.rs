@@ -1,22 +1,24 @@
 use crate::{Point, Value};
+use std::borrow::Borrow;
 
 /// Resolve the points to line protocol format
-pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String {
+pub(crate) fn line_serialization(points: impl IntoIterator<Item = impl Borrow<Point>>) -> String {
     let mut line = Vec::new();
     for point in points {
+        let point = point.borrow();
         line.push(escape_measurement(&point.measurement));
 
-        for (tag, value) in point.tags {
+        for (tag, value) in &point.tags {
             line.push(",".to_string());
-            line.push(escape_keys_and_tags(&tag));
+            line.push(escape_keys_and_tags(tag));
             line.push("=".to_string());
 
             match value {
-                Value::String(s) => line.push(escape_keys_and_tags(&s)),
+                Value::String(s) => line.push(escape_keys_and_tags(s)),
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string()),
                 Value::Boolean(b) => line.push({
-                    if b {
+                    if *b {
                         "true".to_string()
                     } else {
                         "false".to_string()
@@ -27,7 +29,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
 
         let mut was_first = true;
 
-        for (field, value) in point.fields {
+        for (field, value) in &point.fields {
             line.push(
                 {
                     if was_first {
@@ -39,7 +41,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                 }
                 .to_string(),
             );
-            line.push(escape_keys_and_tags(&field));
+            line.push(escape_keys_and_tags(field));
             line.push("=".to_string());
 
             match value {
@@ -49,7 +51,7 @@ pub(crate) fn line_serialization<T: Iterator<Item = Point>>(points: T) -> String
                 Value::Float(f) => line.push(f.to_string()),
                 Value::Integer(i) => line.push(i.to_string() + "i"),
                 Value::Boolean(b) => line.push({
-                    if b {
+                    if *b {
                         "true".to_string()
                     } else {
                         "false".to_string()
@@ -126,7 +128,7 @@ mod test {
         let points = Points::new(point);
 
         assert_eq!(
-            line_serialization(points),
+            line_serialization(&points),
             "test,sometag=false somefield=65i\n"
         )
     }
