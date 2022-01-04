@@ -3,6 +3,7 @@ use futures::prelude::*;
 use reqwest::{Client as HttpClient, Response, Url};
 use serde_json::de::IoRead;
 use std::{
+    borrow::Borrow,
     io::Cursor,
     iter::FromIterator,
     net::UdpSocket,
@@ -123,7 +124,7 @@ impl Client {
     }
 
     /// Write multiple points to the database
-    pub fn write_points<T: Iterator<Item = Point>>(
+    pub fn write_points<T: IntoIterator<Item = impl Borrow<Point>>>(
         &self,
         points: T,
         precision: Option<Precision>,
@@ -538,7 +539,7 @@ impl UdpClient {
 
         let line = serialization::line_serialization(points);
         let line = line.as_bytes();
-        socket.send_to(&line, self.hosts.as_slice())?;
+        socket.send_to(line, self.hosts.as_slice())?;
 
         Ok(())
     }
