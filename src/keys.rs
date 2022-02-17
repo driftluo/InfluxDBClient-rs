@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::HashMap,
     iter::{FromIterator, Iterator},
     slice::Iter,
@@ -8,9 +9,9 @@ use std::{
 /// Influxdb value, Please look at [this address](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
-pub enum Value {
+pub enum Value<'a> {
     /// string
-    String(String),
+    String(Cow<'a, str>),
     /// Integer
     Integer(i64),
     /// float
@@ -21,18 +22,18 @@ pub enum Value {
 
 /// influxdb point
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
-pub struct Point {
+pub struct Point<'a> {
     /// measurement
     pub measurement: String,
     /// tags
-    pub tags: HashMap<String, Value>,
+    pub tags: HashMap<String, Value<'a>>,
     /// fields
-    pub fields: HashMap<String, Value>,
+    pub fields: HashMap<String, Value<'a>>,
     /// timestamp
     pub timestamp: Option<i64>,
 }
 
-impl Point {
+impl<'a> Point<'a> {
     /// Create a new point
     pub fn new(measurement: &str) -> Point {
         Point {
@@ -44,13 +45,13 @@ impl Point {
     }
 
     /// Add a tag and its value
-    pub fn add_tag<T: Into<String>, F: Into<Value>>(mut self, tag: T, value: F) -> Self {
+    pub fn add_tag<T: Into<String>, F: Into<Value<'a>>>(mut self, tag: T, value: F) -> Self {
         self.tags.insert(tag.into(), value.into());
         self
     }
 
     /// Add a field and its value
-    pub fn add_field<T: Into<String>, F: Into<Value>>(mut self, field: T, value: F) -> Self {
+    pub fn add_field<T: Into<String>, F: Into<Value<'a>>>(mut self, field: T, value: F) -> Self {
         self.fields.insert(field.into(), value.into());
         self
     }
@@ -64,19 +65,19 @@ impl Point {
 
 /// Points
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Points {
+pub struct Points<'a> {
     /// points
-    pub point: Vec<Point>,
+    pub point: Vec<Point<'a>>,
 }
 
-impl Points {
+impl<'a> Points<'a> {
     /// Create a new points
     pub fn new(point: Point) -> Points {
         Points { point: vec![point] }
     }
 
     /// Insert point into already existing points
-    pub fn push(mut self, point: Point) -> Self {
+    pub fn push(mut self, point: Point<'a>) -> Self {
         self.point.push(point);
         self
     }
@@ -87,17 +88,17 @@ impl Points {
     }
 }
 
-impl<'a> IntoIterator for &'a Points {
-    type Item = &'a Point;
-    type IntoIter = Iter<'a, Point>;
+impl<'a, 'b> IntoIterator for &'a Points<'b> {
+    type Item = &'a Point<'b>;
+    type IntoIter = Iter<'a, Point<'b>>;
 
-    fn into_iter(self) -> Iter<'a, Point> {
+    fn into_iter(self) -> Iter<'a, Point<'b>> {
         self.point.iter()
     }
 }
 
-impl FromIterator<Point> for Points {
-    fn from_iter<T: IntoIterator<Item = Point>>(iter: T) -> Self {
+impl<'a> FromIterator<Point<'a>> for Points<'a> {
+    fn from_iter<T: IntoIterator<Item = Point<'a>>>(iter: T) -> Self {
         let mut points = Vec::new();
 
         for point in iter {
@@ -108,10 +109,10 @@ impl FromIterator<Point> for Points {
     }
 }
 
-impl Iterator for Points {
-    type Item = Point;
+impl<'a> Iterator for Points<'a> {
+    type Item = Point<'a>;
 
-    fn next(&mut self) -> Option<Point> {
+    fn next(&mut self) -> Option<Point<'a>> {
         self.point.pop()
     }
 }
@@ -217,32 +218,32 @@ macro_rules! point {
     }};
 }
 
-impl From<String> for Value {
-    fn from(v: String) -> Value {
-        Value::String(v)
+impl<'a> From<String> for Value<'a> {
+    fn from(v: String) -> Self {
+        Self::String(Cow::Owned(v))
     }
 }
 
-impl From<&str> for Value {
-    fn from(v: &str) -> Value {
-        Value::String(v.to_string())
+impl<'a> From<&'a str> for Value<'a> {
+    fn from(v: &'a str) -> Self {
+        Self::String(Cow::Borrowed(v))
     }
 }
 
-impl From<i64> for Value {
-    fn from(v: i64) -> Value {
-        Value::Integer(v)
+impl<'a> From<i64> for Value<'a> {
+    fn from(v: i64) -> Self {
+        Self::Integer(v)
     }
 }
 
-impl From<f64> for Value {
-    fn from(v: f64) -> Value {
-        Value::Float(v)
+impl<'a> From<f64> for Value<'a> {
+    fn from(v: f64) -> Self {
+        Self::Float(v)
     }
 }
 
-impl From<bool> for Value {
-    fn from(v: bool) -> Value {
-        Value::Boolean(v)
+impl<'a> From<bool> for Value<'a> {
+    fn from(v: bool) -> Self {
+        Self::Boolean(v)
     }
 }

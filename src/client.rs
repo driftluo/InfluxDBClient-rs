@@ -113,18 +113,18 @@ impl Client {
     }
 
     /// Write a point to the database
-    pub fn write_point(
+    pub fn write_point<'a>(
         &self,
-        point: Point,
+        point: Point<'a>,
         precision: Option<Precision>,
         rp: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> {
+    ) -> impl Future<Output = Result<(), error::Error>> + 'a {
         let points = Points::new(point);
         self.write_points(points, precision, rp)
     }
 
     /// Write multiple points to the database
-    pub fn write_points<T: IntoIterator<Item = impl Borrow<Point>>>(
+    pub fn write_points<'a, T: IntoIterator<Item = impl Borrow<Point<'a>>>>(
         &self,
         points: T,
         precision: Option<Precision>,
