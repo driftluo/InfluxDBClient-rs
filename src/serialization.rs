@@ -76,23 +76,23 @@ pub(crate) fn quote_ident(value: &str) -> String {
     format!(
         "\"{}\"",
         value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
+            .replace('\\', "\\\\")
+            .replace('\"', "\\\"")
+            .replace('\n', "\\n")
     )
 }
 
 #[inline]
 pub(crate) fn quote_literal(value: &str) -> String {
-    format!("'{}'", value.replace("\\", "\\\\").replace("'", "\\'"))
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
 #[inline]
 pub(crate) fn conversion(value: &str) -> String {
     value
-        .replace("\'", "")
-        .replace("\"", "")
-        .replace("\\", "")
+        .replace('\'', "")
+        .replace('\"', "")
+        .replace('\\', "")
         .trim()
         .to_string()
 }
@@ -101,19 +101,19 @@ pub(crate) fn conversion(value: &str) -> String {
 fn escape_keys_and_tags(value: impl AsRef<str>) -> String {
     value
         .as_ref()
-        .replace(",", "\\,")
-        .replace("=", "\\=")
-        .replace(" ", "\\ ")
+        .replace(',', "\\,")
+        .replace('=', "\\=")
+        .replace(' ', "\\ ")
 }
 
 #[inline]
 fn escape_measurement(value: &str) -> String {
-    value.replace(",", "\\,").replace(" ", "\\ ")
+    value.replace(',', "\\,").replace(' ', "\\ ")
 }
 
 #[inline]
 fn escape_string_field_value(value: &str) -> String {
-    format!("\"{}\"", value.replace("\"", "\\\""))
+    format!("\"{}\"", value.replace('\"', "\\\""))
 }
 
 #[cfg(test)]
