@@ -2,26 +2,29 @@ use crate::{Point, Value};
 use std::borrow::Borrow;
 
 /// Resolve the points to line protocol format
-pub(crate) fn line_serialization(points: impl IntoIterator<Item = impl Borrow<Point>>) -> String {
-    let mut line = Vec::new();
+pub(crate) fn line_serialization<'a>(
+    points: impl IntoIterator<Item = impl Borrow<Point<'a>>>,
+) -> String {
+    let mut line = String::new();
+
     for point in points {
-        let point = point.borrow();
-        line.push(escape_measurement(&point.measurement));
+        let point: &Point = point.borrow();
+        line.push_str(&escape_measurement(&point.measurement));
 
         for (tag, value) in &point.tags {
-            line.push(",".to_string());
-            line.push(escape_keys_and_tags(tag));
-            line.push("=".to_string());
+            line.push(',');
+            line.push_str(&escape_keys_and_tags(tag));
+            line.push('=');
 
             match value {
-                Value::String(s) => line.push(escape_keys_and_tags(s)),
-                Value::Float(f) => line.push(f.to_string()),
-                Value::Integer(i) => line.push(i.to_string()),
-                Value::Boolean(b) => line.push({
+                Value::String(s) => line.push_str(&escape_keys_and_tags(s)),
+                Value::Float(f) => line.push_str(f.to_string().as_str()),
+                Value::Integer(i) => line.push_str(i.to_string().as_str()),
+                Value::Boolean(b) => line.push_str({
                     if *b {
-                        "true".to_string()
+                        "true"
                     } else {
-                        "false".to_string()
+                        "false"
                     }
                 }),
             }
@@ -30,45 +33,42 @@ pub(crate) fn line_serialization(points: impl IntoIterator<Item = impl Borrow<Po
         let mut was_first = true;
 
         for (field, value) in &point.fields {
-            line.push(
-                {
-                    if was_first {
-                        was_first = false;
-                        " "
-                    } else {
-                        ","
-                    }
+            line.push({
+                if was_first {
+                    was_first = false;
+                    ' '
+                } else {
+                    ','
                 }
-                .to_string(),
-            );
-            line.push(escape_keys_and_tags(field));
-            line.push("=".to_string());
+            });
+            line.push_str(&escape_keys_and_tags(field));
+            line.push('=');
 
             match value {
                 Value::String(s) => {
-                    line.push(escape_string_field_value(&s.replace("\\\"", "\\\\\"")))
+                    line.push_str(&escape_string_field_value(&s.replace("\\\"", "\\\\\"")))
                 }
-                Value::Float(f) => line.push(f.to_string()),
-                Value::Integer(i) => line.push(i.to_string() + "i"),
-                Value::Boolean(b) => line.push({
+                Value::Float(f) => line.push_str(&f.to_string()),
+                Value::Integer(i) => line.push_str(&format!("{i}i")),
+                Value::Boolean(b) => line.push_str({
                     if *b {
-                        "true".to_string()
+                        "true"
                     } else {
-                        "false".to_string()
+                        "false"
                     }
                 }),
             }
         }
 
         if let Some(t) = point.timestamp {
-            line.push(" ".to_string());
-            line.push(t.to_string());
+            line.push(' ');
+            line.push_str(&t.to_string());
         }
 
-        line.push("\n".to_string())
+        line.push('\n')
     }
 
-    line.join("")
+    line
 }
 
 #[inline]
@@ -98,8 +98,9 @@ pub(crate) fn conversion(value: &str) -> String {
 }
 
 #[inline]
-fn escape_keys_and_tags(value: &str) -> String {
+fn escape_keys_and_tags(value: impl AsRef<str>) -> String {
     value
+        .as_ref()
         .replace(",", "\\,")
         .replace("=", "\\=")
         .replace(" ", "\\ ")
