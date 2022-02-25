@@ -236,9 +236,33 @@ impl<'a> From<i64> for Value<'a> {
     }
 }
 
+impl<'a> From<i32> for Value<'a> {
+    fn from(v: i32) -> Self {
+        Self::Integer(v.into())
+    }
+}
+
+impl<'a> From<i16> for Value<'a> {
+    fn from(v: i16) -> Self {
+        Self::Integer(v.into())
+    }
+}
+
+impl<'a> From<i8> for Value<'a> {
+    fn from(v: i8) -> Self {
+        Self::Integer(v.into())
+    }
+}
+
 impl<'a> From<f64> for Value<'a> {
     fn from(v: f64) -> Self {
         Self::Float(v)
+    }
+}
+
+impl<'a> From<f32> for Value<'a> {
+    fn from(v: f32) -> Self {
+        Self::Float(v.into())
     }
 }
 
