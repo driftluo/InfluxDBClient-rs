@@ -31,8 +31,7 @@ fn create_and_delete_measurement() {
             .add_field("float", 22.3)
             .add_field("'boolean'", false);
 
-        client
-            .write_point(point, Some(Precision::Seconds), None)
+        tokio::spawn(client.write_point(point, Some(Precision::Seconds), None))
             .await
             .unwrap();
 
@@ -61,8 +60,7 @@ fn use_points() {
 
         let points = Points::create_new(vec![point1, point]);
 
-        client
-            .write_points(points, Some(Precision::Seconds), None)
+        tokio::spawn(client.write_points(points, Some(Precision::Seconds), None))
             .await
             .unwrap();
 
