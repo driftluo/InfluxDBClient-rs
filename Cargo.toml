@@ -33,3 +33,6 @@ default = ["reqwest/default-tls"]
 
 # For using rustls-tls (and no need for openssl anymore)
 rustls-tls = ["reqwest/rustls-tls"]
+rustls-tls-manual-roots = ["reqwest/rustls-tls-manual-roots"]
+rustls-tls-webpki-roots = ["reqwest/rustls-tls-webpki-roots"]
+rustls-tls-native-roots = ["reqwest/rustls-tls-native-roots"]
