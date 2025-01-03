@@ -33,6 +33,7 @@ fn create_and_delete_measurement() {
 
         tokio::spawn(client.write_point(point, Some(Precision::Seconds), None))
             .await
+            .unwrap()
             .unwrap();
 
         client.drop_measurement("temporary").await.unwrap();
@@ -62,6 +63,7 @@ fn use_points() {
 
         tokio::spawn(client.write_points(points, Some(Precision::Seconds), None))
             .await
+            .unwrap()
             .unwrap();
 
         sleep(Duration::from_secs(3));
