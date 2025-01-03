@@ -35,8 +35,8 @@ pub struct Point<'a> {
 
 impl<'a> Point<'a> {
     /// Create a new point
-    pub fn new(measurement: &str) -> Point {
-        Point {
+    pub fn new(measurement: &'_ str) -> Self {
+        Self {
             measurement: String::from(measurement),
             tags: HashMap::new(),
             fields: HashMap::new(),
