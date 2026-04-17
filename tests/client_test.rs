@@ -1,4 +1,6 @@
-use influx_db_client::{point, points, reqwest::Url, Client, Point, Points, Precision, UdpClient};
+#![cfg(feature = "reqwest")]
+
+use influx_db_client::{Client, Point, Points, Precision, UdpClient, Url, point, points, reqwest};
 use std::fs::File;
 use std::io::Read;
 use std::thread::sleep;
@@ -161,7 +163,7 @@ fn use_https() {
         .unwrap()
         .to_owned();
     let output = Command::new("openssl")
-        .args(&[
+        .args([
             "req",
             "-x509",
             "-nodes",
@@ -262,4 +264,5 @@ bind-address = "127.0.0.1:{rpc_port}"
     });
 
     influxdb_server.kill().unwrap();
+    influxdb_server.wait().unwrap();
 }
