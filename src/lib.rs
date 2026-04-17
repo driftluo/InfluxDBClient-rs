@@ -30,7 +30,7 @@
 //! let points = points!(point1, point);
 //!
 //! tokio::runtime::Runtime::new().unwrap().block_on(async move {
-//!     // if Precision is None, the default is second
+//!     // if Precision is None, the default is nanosecond
 //!     // Multiple write
 //!     client.write_points(points, Some(Precision::Seconds), None).await.unwrap();
 //!

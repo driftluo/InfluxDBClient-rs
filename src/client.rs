@@ -424,7 +424,7 @@ where
 
         match precision {
             Some(ref t) => param.push(("precision", t.to_str())),
-            None => param.push(("precision", "s")),
+            None => param.push(("precision", Precision::Nanoseconds.to_str())),
         };
 
         if let Some(t) = rp {
@@ -2312,6 +2312,26 @@ mod tests {
         assert_eq!(requests[0].body.as_deref(), Some("cpu value=1i 42\n"));
         assert!(requests[0].url.contains("/write"));
         assert!(requests[0].url.contains("precision=s"));
+    }
+
+    #[test]
+    fn custom_http_client_write_points_default_to_nanosecond_precision() {
+        let http_client = RecordingHttpClient::new(vec![FakeResponse::empty(204)]);
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            http_client,
+        );
+        let point = Point::new("cpu").add_field("value", 1).add_timestamp(42);
+
+        block_on(client.write_point(point, None, None)).unwrap();
+
+        let requests = client.client.take_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[0].body.as_deref(), Some("cpu value=1i 42\n"));
+        assert!(requests[0].url.contains("/write"));
+        assert!(requests[0].url.contains("precision=n"));
     }
 
     #[test]
