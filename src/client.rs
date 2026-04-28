@@ -18,15 +18,39 @@ use reqwest::{Client as ReqwestClient, Response as ReqwestResponse};
 use crate::{
     ChunkedQuery, Node, Point, Points, Precision, Query, error,
     http::{
-        ChunkedHttpResponse, HttpClient, HttpRequest, HttpResponse, QueryChunkedHttpResponse,
-        QueryHttpClient, QueryHttpResponse, WriteHttpClient,
+        BorrowChunkedHttpResponse, BorrowHttpClient, BorrowHttpResponse, ChunkedHttpResponse,
+        HttpClient, HttpMethod, HttpRequest, HttpResponse,
     },
     keys::{ensure_query_success, query_syntax_error},
     serialization,
 };
 
 #[cfg(feature = "reqwest")]
-impl HttpResponse for ReqwestResponse {
+fn reqwest_request_builder(
+    client: &ReqwestClient,
+    method: HttpMethod,
+    request: HttpRequest<'_>,
+) -> reqwest::RequestBuilder {
+    let (url, body, bearer_token) = request.into_parts();
+    let builder = match method {
+        HttpMethod::Get => client.get(url),
+        HttpMethod::Post => client.post(url),
+    };
+    let builder = if let Some(token) = bearer_token {
+        builder.bearer_auth(token.as_ref())
+    } else {
+        builder
+    };
+
+    if let Some(body) = body {
+        builder.body(body.into_owned())
+    } else {
+        builder
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl BorrowHttpResponse for ReqwestResponse {
     fn status(&self) -> u16 {
         self.status().as_u16()
     }
@@ -58,12 +82,46 @@ impl HttpResponse for ReqwestResponse {
 }
 
 #[cfg(feature = "reqwest")]
-impl QueryHttpResponse for ReqwestResponse {
-    async fn json_send<T>(self) -> Result<T, error::Error>
+impl HttpResponse for ReqwestResponse {
+    fn status(&self) -> u16 {
+        self.status().as_u16()
+    }
+
+    fn header(&self, name: &str) -> Result<Option<&str>, error::Error> {
+        match self.headers().get(name) {
+            Some(value) => value
+                .to_str()
+                .map(Some)
+                .map_err(|err| error::Error::Communication(err.to_string())),
+            None => Ok(None),
+        }
+    }
+
+    async fn text(self) -> Result<String, error::Error> {
+        Ok(reqwest::Response::text(self).await?)
+    }
+
+    async fn bytes(self) -> Result<Bytes, error::Error> {
+        Ok(reqwest::Response::bytes(self).await?)
+    }
+
+    async fn json<T>(self) -> Result<T, error::Error>
     where
         T: DeserializeOwned + 'static,
     {
         Ok(reqwest::Response::json(self).await?)
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl BorrowChunkedHttpResponse for ReqwestResponse {
+    type Stream =
+        std::pin::Pin<Box<dyn Stream<Item = Result<Bytes, error::Error>> + Send + 'static>>;
+
+    async fn into_chunk_stream(self) -> Result<Self::Stream, error::Error> {
+        Ok(Box::pin(
+            reqwest::Response::bytes_stream(self).map_err(Into::into),
+        ))
     }
 }
 
@@ -80,122 +138,37 @@ impl ChunkedHttpResponse for ReqwestResponse {
 }
 
 #[cfg(feature = "reqwest")]
-impl QueryChunkedHttpResponse for ReqwestResponse {
-    async fn into_chunk_stream_send(self) -> Result<Self::Stream, error::Error> {
-        Ok(Box::pin(
-            reqwest::Response::bytes_stream(self).map_err(Into::into),
-        ))
-    }
-}
-
-#[cfg(feature = "reqwest")]
-impl WriteHttpClient for ReqwestClient {
-    fn post_send(
-        &self,
-        request: HttpRequest,
-    ) -> impl Future<Output = Result<(u16, String), error::Error>> + Send + 'static + use<> {
-        let (url, body, bearer_token) = request.into_parts();
-        let builder = self.post(url);
-        let builder = if let Some(token) = bearer_token {
-            builder.bearer_auth(token)
-        } else {
-            builder
-        };
-        let builder = if let Some(body) = body {
-            builder.body(body)
-        } else {
-            builder
-        };
-
-        async move {
-            let res = builder.send().await?;
-            let status = res.status().as_u16();
-            let body = reqwest::Response::text(res).await?;
-            Ok((status, body))
-        }
-    }
-}
-
-#[cfg(feature = "reqwest")]
 impl HttpClient for ReqwestClient {
     type Response = ReqwestResponse;
 
-    fn get(
+    fn send(
         &self,
-        request: HttpRequest,
-    ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-        let (url, _body, bearer_token) = request.into_parts();
-        let builder = if let Some(token) = bearer_token {
-            self.get(url).bearer_auth(token)
-        } else {
-            self.get(url)
-        };
+        method: HttpMethod,
+        request: HttpRequest<'static>,
+    ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<> {
+        let client = self.clone();
 
-        async move { Ok(builder.send().await?) }
-    }
-
-    fn post(
-        &self,
-        request: HttpRequest,
-    ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'_> {
-        let (url, body, bearer_token) = request.into_parts();
-        let builder = self.post(url);
-        let builder = if let Some(token) = bearer_token {
-            builder.bearer_auth(token)
-        } else {
-            builder
-        };
-        let builder = if let Some(body) = body {
-            builder.body(body)
-        } else {
-            builder
-        };
-
-        async move { Ok(builder.send().await?) }
+        async move {
+            Ok(reqwest_request_builder(&client, method, request)
+                .send()
+                .await?)
+        }
     }
 }
 
 #[cfg(feature = "reqwest")]
-impl QueryHttpClient for ReqwestClient {
-    fn send_get(
-        &self,
-        request: HttpRequest,
-    ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-        let client = self.clone();
-        let (url, _body, bearer_token) = request.into_parts();
+impl BorrowHttpClient for ReqwestClient {
+    type Response = ReqwestResponse;
 
+    fn send<'a>(
+        &'a self,
+        method: HttpMethod,
+        request: HttpRequest<'a>,
+    ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
         async move {
-            let builder = if let Some(token) = bearer_token {
-                client.get(url).bearer_auth(token)
-            } else {
-                client.get(url)
-            };
-
-            Ok(builder.send().await?)
-        }
-    }
-
-    fn send_post(
-        &self,
-        request: HttpRequest,
-    ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-        let client = self.clone();
-        let (url, body, bearer_token) = request.into_parts();
-
-        async move {
-            let builder = client.post(url);
-            let builder = if let Some(token) = bearer_token {
-                builder.bearer_auth(token)
-            } else {
-                builder
-            };
-            let builder = if let Some(body) = body {
-                builder.body(body)
-            } else {
-                builder
-            };
-
-            Ok(builder.send().await?)
+            Ok(reqwest_request_builder(self, method, request)
+                .send()
+                .await?)
         }
     }
 }
@@ -285,7 +258,7 @@ impl<T> Client<T> {
         self.db.as_str()
     }
 
-    fn build_request(&self, url: Url) -> HttpRequest {
+    fn build_request(&self, url: Url) -> HttpRequest<'_> {
         match self.jwt_token.as_deref() {
             Some(token) => HttpRequest::new(url).with_bearer_token(token),
             None => HttpRequest::new(url),
@@ -326,6 +299,25 @@ fn validate_privilege(privilege: &str) -> Result<(), error::Error> {
     }
 }
 
+async fn check_query_status_borrow<R, F, Fut>(res: R, parse_json: F) -> Result<R, error::Error>
+where
+    R: BorrowHttpResponse,
+    F: FnOnce(R) -> Fut,
+    Fut: Future<Output = Result<Query, error::Error>>,
+{
+    match res.status() {
+        200 => Ok(res),
+        400 => {
+            let json_data = parse_json(res).await?;
+            Err(query_syntax_error(&json_data, "Bad request"))
+        }
+        401 | 403 => Err(error::Error::InvalidCredentials(
+            "Invalid authentication credentials.".to_string(),
+        )),
+        _ => Err(error::Error::Unknow("There is something wrong".to_string())),
+    }
+}
+
 async fn check_query_status<R, F, Fut>(res: R, parse_json: F) -> Result<R, error::Error>
 where
     R: HttpResponse,
@@ -345,14 +337,59 @@ where
     }
 }
 
-impl<T> Client<T>
-where
-    T: HttpClient,
-{
-    /// Query whether the corresponding database exists, return bool
-    pub fn ping(&self) -> impl Future<Output = bool> {
-        let url = self.build_url("ping", None);
-        let request_future = self.client.get(self.build_request(url));
+fn map_write_response(status: u16, body: String) -> Result<(), error::Error> {
+    match status {
+        400 => Err(error::Error::SyntaxError(serialization::conversion(&body))),
+        401 | 403 => Err(error::Error::InvalidCredentials(
+            "Invalid authentication credentials.".to_string(),
+        )),
+        404 => Err(error::Error::DataBaseDoesNotExist(
+            serialization::conversion(&body),
+        )),
+        500 => Err(error::Error::RetentionPolicyDoesNotExist(body)),
+        status => Err(error::Error::Unknow(format!(
+            "Received status code {}",
+            status
+        ))),
+    }
+}
+
+fn map_version_header(header: Result<Option<&str>, error::Error>) -> Option<String> {
+    match header {
+        Ok(Some(header)) => Some(header.to_owned()),
+        Ok(None) => Some(String::from("Don't know")),
+        Err(_) => None,
+    }
+}
+
+impl<T> Client<T> {
+    fn build_ping_request(&self) -> HttpRequest<'_> {
+        self.build_request(self.build_url("ping", None))
+    }
+
+    /// Query whether the corresponding database exists.
+    pub fn ping(&self) -> impl Future<Output = bool> + Send + 'static + use<T>
+    where
+        T: HttpClient,
+    {
+        let response_future = self
+            .client
+            .send(HttpMethod::Get, self.build_ping_request().into_owned());
+
+        async move {
+            response_future
+                .await
+                .map(|res| matches!(res.status(), 204))
+                .unwrap_or(false)
+        }
+    }
+
+    /// Borrowing variant of [`Client::ping`].
+    pub fn ping_borrow(&self) -> impl Future<Output = bool> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
+        let request_future = self.client.send(HttpMethod::Get, self.build_ping_request());
 
         async move {
             request_future
@@ -362,19 +399,38 @@ where
         }
     }
 
-    /// Query the version of the database and return the version number
-    pub fn get_version(&self) -> impl Future<Output = Option<String>> {
-        let url = self.build_url("ping", None);
-        let request_future = self.client.get(self.build_request(url));
+    /// Query the version of the database and return the version number.
+    pub fn get_version(&self) -> impl Future<Output = Option<String>> + Send + 'static + use<T>
+    where
+        T: HttpClient,
+    {
+        let response_future = self
+            .client
+            .send(HttpMethod::Get, self.build_ping_request().into_owned());
+
+        async move {
+            if let Ok(res) = response_future.await {
+                match res.status() {
+                    204 => map_version_header(res.header("X-Influxdb-Version")),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+    }
+
+    /// Borrowing variant of [`Client::get_version`].
+    pub fn get_version_borrow(&self) -> impl Future<Output = Option<String>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
+        let request_future = self.client.send(HttpMethod::Get, self.build_ping_request());
 
         async move {
             if let Ok(res) = request_future.await {
                 match res.status() {
-                    204 => match res.header("X-Influxdb-Version") {
-                        Ok(Some(header)) => Some(header.to_owned()),
-                        Ok(None) => Some(String::from("Don't know")),
-                        Err(_) => None,
-                    },
+                    204 => map_version_header(res.header("X-Influxdb-Version")),
                     _ => None,
                 }
             } else {
@@ -389,37 +445,66 @@ where
         point: Point<'a>,
         precision: Option<Precision>,
         rp: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: WriteHttpClient,
+        T: HttpClient,
     {
         let line = serialization::line_serialization(std::iter::once(&point));
         self.write_line(line, precision, rp)
     }
 
+    /// Write a point to the database through a future that borrows the configured HTTP client.
+    pub fn write_point_borrow<'a>(
+        &self,
+        point: Point<'a>,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> impl Future<Output = Result<(), error::Error>>
+    where
+        T: BorrowHttpClient,
+    {
+        let line = serialization::line_serialization(std::iter::once(&point));
+        self.write_line_borrow(line, precision, rp)
+    }
+
     /// Write multiple points to the database
-    pub fn write_points<'a, I: IntoIterator<Item = impl Borrow<Point<'a>>>>(
+    pub fn write_points<'a, I, P>(
         &self,
         points: I,
         precision: Option<Precision>,
         rp: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T, I, P>
     where
-        T: WriteHttpClient,
+        I: IntoIterator<Item = P>,
+        P: Borrow<Point<'a>>,
+        T: HttpClient,
     {
         let line = serialization::line_serialization(points);
         self.write_line(line, precision, rp)
     }
 
-    fn write_line(
+    /// Write multiple points through a future that borrows the configured HTTP client.
+    pub fn write_points_borrow<'a, I, P>(
+        &self,
+        points: I,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> impl Future<Output = Result<(), error::Error>>
+    where
+        I: IntoIterator<Item = P>,
+        P: Borrow<Point<'a>>,
+        T: BorrowHttpClient,
+    {
+        let line = serialization::line_serialization(points);
+        self.write_line_borrow(line, precision, rp)
+    }
+
+    fn build_write_request(
         &self,
         line: String,
         precision: Option<Precision>,
         rp: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
-    where
-        T: WriteHttpClient,
-    {
+    ) -> HttpRequest<'_> {
         let mut param = vec![("db", self.db.as_str())];
 
         match precision {
@@ -432,30 +517,56 @@ where
         }
 
         let url = self.build_url("write", Some(param));
-        let request = self.build_request(url).with_body(line);
-        let post_future = self.client.post_send(request);
+        self.build_request(url).with_body(line)
+    }
+
+    fn write_line(
+        &self,
+        line: String,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
+    where
+        T: HttpClient,
+    {
+        let request = self.build_write_request(line, precision, rp).into_owned();
+        let response_future = self.client.send(HttpMethod::Post, request);
 
         async move {
-            let (status, body) = post_future.await?;
+            let response = response_future.await?;
+            let status = response.status();
 
             if status == 204 {
                 return Ok(());
             }
 
-            match status {
-                400 => Err(error::Error::SyntaxError(serialization::conversion(&body))),
-                401 | 403 => Err(error::Error::InvalidCredentials(
-                    "Invalid authentication credentials.".to_string(),
-                )),
-                404 => Err(error::Error::DataBaseDoesNotExist(
-                    serialization::conversion(&body),
-                )),
-                500 => Err(error::Error::RetentionPolicyDoesNotExist(body)),
-                status => Err(error::Error::Unknow(format!(
-                    "Received status code {}",
-                    status
-                ))),
+            let body = response.text().await?;
+            map_write_response(status, body)
+        }
+    }
+
+    fn write_line_borrow(
+        &self,
+        line: String,
+        precision: Option<Precision>,
+        rp: Option<&str>,
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
+        let request = self.build_write_request(line, precision, rp);
+        let response_future = self.client.send(HttpMethod::Post, request);
+
+        async move {
+            let response = response_future.await?;
+            let status = response.status();
+
+            if status == 204 {
+                return Ok(());
             }
+
+            let body = response.text().await?;
+            map_write_response(status, body)
         }
     }
 
@@ -464,11 +575,11 @@ where
         &self,
         q: &str,
         epoch: Option<Precision>,
-    ) -> impl Future<Output = Result<Option<Vec<Node>>, error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<Option<Vec<Node>>, error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
-        let raw_future = self.query_raw_owned(q.to_owned(), epoch);
+        let raw_future = self.query_raw(q, epoch);
         async move { Ok(raw_future.await?.results) }
     }
 
@@ -477,7 +588,10 @@ where
         &self,
         q: &str,
         epoch: Option<Precision>,
-    ) -> impl Future<Output = Result<Option<Vec<Node>>, error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<Option<Vec<Node>>, error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         self.query_raw_borrow(q, epoch).map_ok(|t| t.results)
     }
 
@@ -487,14 +601,19 @@ where
         q: &str,
         epoch: Option<Precision>,
     ) -> impl Future<
-        Output = Result<ChunkedQuery<<T::Response as ChunkedHttpResponse>::Stream>, error::Error>,
-    > + Send
+        Output = Result<
+            ChunkedQuery<<<T as HttpClient>::Response as ChunkedHttpResponse>::Stream>,
+            error::Error,
+        >,
+    >
+    + Send
     + 'static
+    + use<T>
     where
-        T: QueryHttpClient,
-        T::Response: QueryChunkedHttpResponse,
+        T: HttpClient,
+        <T as HttpClient>::Response: ChunkedHttpResponse,
     {
-        self.query_raw_chunked_owned(q.to_owned(), epoch)
+        self.query_raw_chunked(q, epoch)
     }
 
     /// Query and return chunked query documents through a future that borrows the configured HTTP client.
@@ -503,10 +622,14 @@ where
         q: &str,
         epoch: Option<Precision>,
     ) -> impl Future<
-        Output = Result<ChunkedQuery<<T::Response as ChunkedHttpResponse>::Stream>, error::Error>,
+        Output = Result<
+            ChunkedQuery<<<T as BorrowHttpClient>::Response as BorrowChunkedHttpResponse>::Stream>,
+            error::Error,
+        >,
     > + use<'_, T>
     where
-        T::Response: ChunkedHttpResponse,
+        T: BorrowHttpClient,
+        <T as BorrowHttpClient>::Response: BorrowChunkedHttpResponse,
     {
         self.query_raw_chunked_borrow(q, epoch)
     }
@@ -515,23 +638,26 @@ where
     pub fn drop_measurement(
         &self,
         measurement: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!(
             "Drop measurement {}",
             serialization::quote_ident(measurement)
         );
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::drop_measurement`].
     pub fn drop_measurement_borrow(
         &self,
         measurement: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!(
             "Drop measurement {}",
             serialization::quote_ident(measurement)
@@ -544,20 +670,23 @@ where
     pub fn create_database(
         &self,
         dbname: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!("Create database {}", serialization::quote_ident(dbname));
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::create_database`].
     pub fn create_database_borrow(
         &self,
         dbname: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!("Create database {}", serialization::quote_ident(dbname));
 
         self.execute_query_borrow(sql)
@@ -567,20 +696,23 @@ where
     pub fn drop_database(
         &self,
         dbname: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!("Drop database {}", serialization::quote_ident(dbname));
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::drop_database`].
     pub fn drop_database_borrow(
         &self,
         dbname: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!("Drop database {}", serialization::quote_ident(dbname));
 
         self.execute_query_borrow(sql)
@@ -592,9 +724,9 @@ where
         user: &str,
         passwd: &str,
         admin: bool,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql: String = {
             if admin {
@@ -612,7 +744,7 @@ where
             }
         };
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::create_user`].
@@ -621,7 +753,10 @@ where
         user: &str,
         passwd: &str,
         admin: bool,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql: String = if admin {
             format!(
                 "Create user {0} with password {1} with all privileges",
@@ -643,20 +778,23 @@ where
     pub fn drop_user(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!("Drop user {}", serialization::quote_ident(user));
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::drop_user`].
     pub fn drop_user_borrow(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!("Drop user {}", serialization::quote_ident(user));
 
         self.execute_query_borrow(sql)
@@ -667,9 +805,9 @@ where
         &self,
         user: &str,
         passwd: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!(
             "Set password for {}={}",
@@ -677,7 +815,7 @@ where
             serialization::quote_literal(passwd)
         );
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::set_user_password`].
@@ -685,7 +823,10 @@ where
         &self,
         user: &str,
         passwd: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!(
             "Set password for {}={}",
             serialization::quote_ident(user),
@@ -699,23 +840,26 @@ where
     pub fn grant_admin_privileges(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!(
             "Grant all privileges to {}",
             serialization::quote_ident(user)
         );
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::grant_admin_privileges`].
     pub fn grant_admin_privileges_borrow(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!(
             "Grant all privileges to {}",
             serialization::quote_ident(user)
@@ -728,23 +872,26 @@ where
     pub fn revoke_admin_privileges(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let sql = format!(
             "Revoke all privileges from {}",
             serialization::quote_ident(user)
         );
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::revoke_admin_privileges`].
     pub fn revoke_admin_privileges_borrow(
         &self,
         user: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let sql = format!(
             "Revoke all privileges from {}",
             serialization::quote_ident(user)
@@ -761,9 +908,9 @@ where
         user: &str,
         db: &str,
         privilege: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         match validate_privilege(privilege) {
             Err(e) => futures::future::Either::Left(futures::future::ready(Err(e))),
@@ -774,7 +921,7 @@ where
                     serialization::quote_ident(db),
                     serialization::quote_ident(user)
                 );
-                futures::future::Either::Right(self.query_raw_owned(sql, None).map_ok(|_| ()))
+                futures::future::Either::Right(self.query_raw(&sql, None).map_ok(|_| ()))
             }
         }
     }
@@ -785,7 +932,10 @@ where
         user: &str,
         db: &str,
         privilege: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let validated = validate_privilege(privilege);
         let sql = format!(
             "Grant {} on {} to {}",
@@ -808,9 +958,9 @@ where
         user: &str,
         db: &str,
         privilege: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         match validate_privilege(privilege) {
             Err(e) => futures::future::Either::Left(futures::future::ready(Err(e))),
@@ -821,7 +971,7 @@ where
                     serialization::quote_ident(db),
                     serialization::quote_ident(user)
                 );
-                futures::future::Either::Right(self.query_raw_owned(sql, None).map_ok(|_| ()))
+                futures::future::Either::Right(self.query_raw(&sql, None).map_ok(|_| ()))
             }
         }
     }
@@ -832,7 +982,10 @@ where
         user: &str,
         db: &str,
         privilege: &str,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let validated = validate_privilege(privilege);
         let sql = format!(
             "Revoke {0} on {1} from {2}",
@@ -861,9 +1014,9 @@ where
         replication: &str,
         default: bool,
         db: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let database = { if let Some(t) = db { t } else { &self.db } };
 
@@ -887,7 +1040,7 @@ where
             }
         };
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::create_retention_policy`].
@@ -898,7 +1051,10 @@ where
         replication: &str,
         default: bool,
         db: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let database = if let Some(t) = db { t } else { &self.db };
 
         let sql: String = if default {
@@ -927,9 +1083,9 @@ where
         &self,
         name: &str,
         db: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<(), error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let database = { if let Some(t) = db { t } else { &self.db } };
 
@@ -939,7 +1095,7 @@ where
             serialization::quote_ident(database)
         );
 
-        self.query_raw_owned(sql, None).map_ok(|_| ())
+        self.query_raw(&sql, None).map_ok(|_| ())
     }
 
     /// Borrowing variant of [`Client::drop_retention_policy`].
@@ -947,7 +1103,10 @@ where
         &self,
         name: &str,
         db: Option<&str>,
-    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<(), error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let database = if let Some(t) = db { t } else { &self.db };
 
         let sql = format!(
@@ -964,7 +1123,7 @@ where
         q: &str,
         epoch: Option<Precision>,
         chunked: bool,
-    ) -> (HttpRequest, bool) {
+    ) -> (HttpRequest<'_>, bool) {
         let mut param = vec![("db", self.db.as_str()), ("q", q)];
 
         if let Some(ref t) = epoch {
@@ -990,51 +1149,58 @@ where
         q: &str,
         epoch: Option<Precision>,
         chunked: bool,
-    ) -> impl Future<Output = Result<T::Response, error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<<T as BorrowHttpClient>::Response, error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let (request, is_read_query) = self.build_query_request(q, epoch, chunked);
-        let request_future = if is_read_query {
-            futures::future::Either::Left(self.client.get(request))
+        let method = if is_read_query {
+            HttpMethod::Get
         } else {
-            futures::future::Either::Right(self.client.post(request))
+            HttpMethod::Post
         };
+        let request_future = self.client.send(method, request);
 
         async move {
             let res = request_future.await?;
+            check_query_status_borrow(res, |r| r.json::<Query>()).await
+        }
+    }
+
+    fn send_request(
+        &self,
+        method: HttpMethod,
+        request: HttpRequest<'static>,
+    ) -> impl Future<Output = Result<<T as HttpClient>::Response, error::Error>> + Send + 'static + use<T>
+    where
+        T: HttpClient,
+    {
+        let response_future = self.client.send(method, request);
+
+        async move {
+            let res = response_future.await?;
             check_query_status(res, |r| r.json::<Query>()).await
         }
     }
 
-    async fn send_request_owned(
-        client: T,
-        request: HttpRequest,
-        is_read_query: bool,
-    ) -> Result<T::Response, error::Error>
-    where
-        T: QueryHttpClient,
-    {
-        let res = if is_read_query {
-            client.send_get(request).await?
-        } else {
-            client.send_post(request).await?
-        };
-
-        check_query_status(res, |r| r.json_send::<Query>()).await
-    }
-
-    /// Query and return to the native json structure through the owned query path.
-    fn query_raw_owned(
+    /// Query and return to the native json structure through the spawn-safe query path.
+    fn query_raw(
         &self,
-        q: String,
+        q: &str,
         epoch: Option<Precision>,
-    ) -> impl Future<Output = Result<Query, error::Error>> + Send + 'static
+    ) -> impl Future<Output = Result<Query, error::Error>> + Send + 'static + use<T>
     where
-        T: QueryHttpClient,
+        T: HttpClient,
     {
         let (request, is_read_query) = self.build_query_request(&q, epoch, false);
-        let client = self.client.clone();
-        let resp_future = Self::send_request_owned(client, request, is_read_query);
+        let method = if is_read_query {
+            HttpMethod::Get
+        } else {
+            HttpMethod::Post
+        };
+        let resp_future = self.send_request(method, request.into_owned());
         async move {
-            let query = resp_future.await?.json_send().await?;
+            let query = resp_future.await?.json().await?;
             ensure_query_success(query)
         }
     }
@@ -1044,7 +1210,10 @@ where
         &self,
         q: &str,
         epoch: Option<Precision>,
-    ) -> impl Future<Output = Result<Query, error::Error>> + use<'_, T> {
+    ) -> impl Future<Output = Result<Query, error::Error>> + use<'_, T>
+    where
+        T: BorrowHttpClient,
+    {
         let resp_future = self.send_request_borrow(q, epoch, false);
         async move {
             let query = resp_future.await?.json().await?;
@@ -1052,30 +1221,42 @@ where
         }
     }
 
-    async fn execute_query_borrow(&self, sql: String) -> Result<(), error::Error> {
+    async fn execute_query_borrow(&self, sql: String) -> Result<(), error::Error>
+    where
+        T: BorrowHttpClient,
+    {
         self.query_raw_borrow(&sql, None).await?;
         Ok(())
     }
 
-    /// Query and return chunked query documents through the owned query path.
-    fn query_raw_chunked_owned(
+    /// Query and return chunked query documents through the spawn-safe query path.
+    fn query_raw_chunked(
         &self,
-        q: String,
+        q: &str,
         epoch: Option<Precision>,
     ) -> impl Future<
-        Output = Result<ChunkedQuery<<T::Response as ChunkedHttpResponse>::Stream>, error::Error>,
-    > + Send
+        Output = Result<
+            ChunkedQuery<<<T as HttpClient>::Response as ChunkedHttpResponse>::Stream>,
+            error::Error,
+        >,
+    >
+    + Send
     + 'static
+    + use<T>
     where
-        T: QueryHttpClient,
-        T::Response: QueryChunkedHttpResponse,
+        T: HttpClient,
+        <T as HttpClient>::Response: ChunkedHttpResponse,
     {
         let (request, is_read_query) = self.build_query_request(&q, epoch, true);
-        let client = self.client.clone();
-        let resp_future = Self::send_request_owned(client, request, is_read_query);
+        let method = if is_read_query {
+            HttpMethod::Get
+        } else {
+            HttpMethod::Post
+        };
+        let resp_future = self.send_request(method, request.into_owned());
         async move {
             let response = resp_future.await?;
-            let stream = response.into_chunk_stream_send().await?;
+            let stream = response.into_chunk_stream().await?;
             Ok(ChunkedQuery::new(stream))
         }
     }
@@ -1086,10 +1267,14 @@ where
         q: &str,
         epoch: Option<Precision>,
     ) -> impl Future<
-        Output = Result<ChunkedQuery<<T::Response as ChunkedHttpResponse>::Stream>, error::Error>,
+        Output = Result<
+            ChunkedQuery<<<T as BorrowHttpClient>::Response as BorrowChunkedHttpResponse>::Stream>,
+            error::Error,
+        >,
     > + use<'_, T>
     where
-        T::Response: ChunkedHttpResponse,
+        T: BorrowHttpClient,
+        <T as BorrowHttpClient>::Response: BorrowChunkedHttpResponse,
     {
         let resp_future = self.send_request_borrow(q, epoch, true);
         async move {
@@ -1176,8 +1361,8 @@ mod tests {
     use crate::{
         Point, Precision, Query, error,
         http::{
-            ChunkedHttpResponse, HttpClient, HttpRequest, HttpResponse, QueryChunkedHttpResponse,
-            QueryHttpClient, QueryHttpResponse, WriteHttpClient,
+            BorrowChunkedHttpResponse, BorrowHttpClient, BorrowHttpResponse, ChunkedHttpResponse,
+            HttpClient, HttpMethod, HttpRequest, HttpResponse,
         },
     };
     use bytes::Bytes;
@@ -1225,7 +1410,7 @@ mod tests {
         }
     }
 
-    impl HttpResponse for FakeResponse {
+    impl BorrowHttpResponse for FakeResponse {
         fn status(&self) -> u16 {
             self.status
         }
@@ -1251,8 +1436,50 @@ mod tests {
         }
     }
 
-    impl QueryHttpResponse for FakeResponse {
-        async fn json_send<T>(self) -> Result<T, error::Error>
+    impl HttpResponse for FakeResponse {
+        fn status(&self) -> u16 {
+            self.status
+        }
+
+        fn header(&self, name: &str) -> Result<Option<&str>, error::Error> {
+            Ok(self.headers.get(name).map(String::as_str))
+        }
+
+        async fn text(self) -> Result<String, error::Error> {
+            Ok(self.body)
+        }
+
+        async fn bytes(self) -> Result<Bytes, error::Error> {
+            Ok(Bytes::from(self.body))
+        }
+
+        async fn json<T>(self) -> Result<T, error::Error>
+        where
+            T: DeserializeOwned + 'static,
+        {
+            serde_json::from_str(&self.body)
+                .map_err(|err| error::Error::Communication(err.to_string()))
+        }
+    }
+
+    impl HttpResponse for OwnedOnlyResponse {
+        fn status(&self) -> u16 {
+            self.status
+        }
+
+        fn header(&self, name: &str) -> Result<Option<&str>, error::Error> {
+            Ok(self.headers.get(name).map(String::as_str))
+        }
+
+        async fn text(self) -> Result<String, error::Error> {
+            Ok(self.body)
+        }
+
+        async fn bytes(self) -> Result<Bytes, error::Error> {
+            Ok(Bytes::from(self.body))
+        }
+
+        async fn json<T>(self) -> Result<T, error::Error>
         where
             T: DeserializeOwned + 'static,
         {
@@ -1283,7 +1510,7 @@ mod tests {
             requests: Arc<Mutex<Vec<RecordedRequest>>>,
             responses: Arc<Mutex<Vec<FakeResponse>>>,
             method: &'static str,
-            request: HttpRequest,
+            request: HttpRequest<'_>,
         ) -> Result<FakeResponse, error::Error> {
             requests.lock().unwrap().push(RecordedRequest {
                 method,
@@ -1340,6 +1567,26 @@ mod tests {
         fn new() -> Self {
             Self {
                 post_calls: Cell::new(0),
+            }
+        }
+    }
+
+    struct BorrowingWriteHttpClient {
+        requests: Rc<Cell<u16>>,
+        last_request: Rc<std::cell::RefCell<Option<RecordedRequest>>>,
+        response: FakeResponse,
+    }
+
+    impl BorrowingWriteHttpClient {
+        fn new() -> Self {
+            Self::with_response(FakeResponse::empty(204))
+        }
+
+        fn with_response(response: FakeResponse) -> Self {
+            Self {
+                requests: Rc::new(Cell::new(0)),
+                last_request: Rc::new(std::cell::RefCell::new(None)),
+                response,
             }
         }
     }
@@ -1449,6 +1696,52 @@ mod tests {
         response: ChunkedFakeResponse,
     }
 
+    #[derive(Clone)]
+    struct OwnedOnlyResponse {
+        status: u16,
+        headers: HashMap<String, String>,
+        body: String,
+    }
+
+    impl OwnedOnlyResponse {
+        fn json(status: u16, body: &str) -> Self {
+            Self {
+                status,
+                headers: HashMap::new(),
+                body: body.to_string(),
+            }
+        }
+
+        fn empty(status: u16) -> Self {
+            Self::json(status, "")
+        }
+
+        fn with_header(status: u16, name: &str, value: &str) -> Self {
+            Self {
+                status,
+                headers: HashMap::from([(name.to_string(), value.to_string())]),
+                body: String::new(),
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct OwnedOnlyChunkedResponse {
+        status: u16,
+        segments: Vec<Vec<u8>>,
+    }
+
+    #[derive(Clone)]
+    struct OwnedOnlyHttpClient {
+        requests: Arc<Mutex<Vec<RecordedRequest>>>,
+        responses: Arc<Mutex<Vec<OwnedOnlyResponse>>>,
+    }
+
+    #[derive(Clone)]
+    struct OwnedOnlyChunkedHttpClient {
+        response: OwnedOnlyChunkedResponse,
+    }
+
     impl<'de> Deserialize<'de> for NonSendQueryResult {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -1467,85 +1760,116 @@ mod tests {
         }
     }
 
-    impl HttpClient for RecordingHttpClient {
+    impl BorrowHttpClient for RecordingHttpClient {
         type Response = FakeResponse;
 
-        fn get(
-            &self,
-            request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let requests = Arc::clone(&self.requests);
             let responses = Arc::clone(&self.responses);
+            let method = match method {
+                HttpMethod::Get => "GET",
+                HttpMethod::Post => "POST",
+            };
 
-            async move { Self::record_with(requests, responses, "GET", request) }
-        }
-
-        fn post(
-            &self,
-            request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-            let requests = Arc::clone(&self.requests);
-            let responses = Arc::clone(&self.responses);
-
-            async move { Self::record_with(requests, responses, "POST", request) }
+            async move { Self::record_with(requests, responses, method, request) }
         }
     }
 
-    impl WriteHttpClient for RecordingHttpClient {
-        fn post_send(
+    impl HttpClient for OwnedOnlyHttpClient {
+        type Response = OwnedOnlyResponse;
+
+        fn send(
             &self,
-            request: HttpRequest,
-        ) -> impl Future<Output = Result<(u16, String), error::Error>> + Send + 'static + use<>
+            method: HttpMethod,
+            request: HttpRequest<'static>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<>
         {
             let requests = Arc::clone(&self.requests);
             let responses = Arc::clone(&self.responses);
 
             async move {
-                let res = Self::record_with(requests, responses, "POST", request)?;
-                Ok((res.status, res.body))
+                Self::record_with(
+                    requests,
+                    responses,
+                    match method {
+                        HttpMethod::Get => "GET",
+                        HttpMethod::Post => "POST",
+                    },
+                    request,
+                )
             }
         }
     }
 
-    impl QueryHttpClient for RecordingHttpClient {
-        fn send_get(
+    impl HttpClient for OwnedOnlyChunkedHttpClient {
+        type Response = OwnedOnlyChunkedResponse;
+
+        fn send(
             &self,
-            request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-            let requests = Arc::clone(&self.requests);
-            let responses = Arc::clone(&self.responses);
+            method: HttpMethod,
+            _request: HttpRequest<'static>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<>
+        {
+            let response = self.response.clone();
+            let error = error::Error::Unknow("POST is not used in this test".to_string());
 
-            async move { Self::record_with(requests, responses, "GET", request) }
-        }
-
-        fn send_post(
-            &self,
-            request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-            let requests = Arc::clone(&self.requests);
-            let responses = Arc::clone(&self.responses);
-
-            async move { Self::record_with(requests, responses, "POST", request) }
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(response),
+                    HttpMethod::Post => Err(error),
+                }
+            }
         }
     }
 
-    impl HttpClient for NonSyncWriteHttpClient {
+    impl HttpClient for RecordingHttpClient {
         type Response = FakeResponse;
 
-        async fn get(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "GET is not used in this test".to_string(),
-            ))
-        }
-
-        fn post(
+        fn send(
             &self,
-            request: HttpRequest,
-        ) -> impl std::future::Future<Output = Result<Self::Response, error::Error>> {
+            method: HttpMethod,
+            request: HttpRequest<'static>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<>
+        {
+            let requests = Arc::clone(&self.requests);
+            let responses = Arc::clone(&self.responses);
+
+            async move {
+                Self::record_with(
+                    requests,
+                    responses,
+                    match method {
+                        HttpMethod::Get => "GET",
+                        HttpMethod::Post => "POST",
+                    },
+                    request,
+                )
+            }
+        }
+    }
+
+    impl BorrowHttpClient for NonSyncWriteHttpClient {
+        type Response = FakeResponse;
+
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let requests = Arc::clone(&self.requests);
             let status = self.status.get();
 
             async move {
+                if method != HttpMethod::Post {
+                    return Err(error::Error::Unknow(
+                        "GET is not used in this test".to_string(),
+                    ));
+                }
+
                 requests.lock().unwrap().push(RecordedRequest {
                     method: "POST",
                     url: request.url().to_string(),
@@ -1558,11 +1882,14 @@ mod tests {
         }
     }
 
-    impl WriteHttpClient for NonSyncWriteHttpClient {
-        fn post_send(
+    impl HttpClient for NonSyncWriteHttpClient {
+        type Response = FakeResponse;
+
+        fn send(
             &self,
-            request: HttpRequest,
-        ) -> impl std::future::Future<Output = Result<(u16, String), error::Error>>
+            method: HttpMethod,
+            request: HttpRequest<'static>,
+        ) -> impl std::future::Future<Output = Result<Self::Response, error::Error>>
         + Send
         + 'static
         + use<> {
@@ -1570,6 +1897,12 @@ mod tests {
             let status = self.status.get();
 
             async move {
+                if method != HttpMethod::Post {
+                    return Err(error::Error::Unknow(
+                        "GET is not used in this test".to_string(),
+                    ));
+                }
+
                 requests.lock().unwrap().push(RecordedRequest {
                     method: "POST",
                     url: request.url().to_string(),
@@ -1577,131 +1910,170 @@ mod tests {
                     body: request.body().map(str::to_owned),
                 });
 
-                Ok((status, String::new()))
+                Ok(FakeResponse::empty(status))
             }
         }
     }
 
-    impl HttpClient for BorrowingGetHttpClient {
+    impl BorrowHttpClient for BorrowingGetHttpClient {
         type Response = FakeResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-            self.get_calls.set(self.get_calls.get() + 1);
-
-            async {
-                Ok(FakeResponse::json(
-                    200,
-                    &format!(r#"{{"value":"{}"}}"#, self.select_response),
-                ))
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            if method == HttpMethod::Get {
+                self.get_calls.set(self.get_calls.get() + 1);
             }
-        }
 
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(FakeResponse::json(
+                        200,
+                        &format!(r#"{{"value":"{}"}}"#, self.select_response),
+                    )),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
+            }
         }
     }
 
-    impl HttpClient for BorrowingPostHttpClient {
+    impl BorrowHttpClient for BorrowingPostHttpClient {
         type Response = FakeResponse;
 
-        async fn get(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "GET is not used in this test".to_string(),
-            ))
-        }
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            if method == HttpMethod::Post {
+                self.post_calls.set(self.post_calls.get() + 1);
+            }
 
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            self.post_calls.set(self.post_calls.get() + 1);
-            Ok(FakeResponse::json(200, r#"{"results":[]}"#))
+            async move {
+                match method {
+                    HttpMethod::Get => Err(error::Error::Unknow(
+                        "GET is not used in this test".to_string(),
+                    )),
+                    HttpMethod::Post => Ok(FakeResponse::json(200, r#"{"results":[]}"#)),
+                }
+            }
         }
     }
 
-    impl HttpClient for BorrowingQueryGetHttpClient {
+    impl BorrowHttpClient for BorrowingWriteHttpClient {
         type Response = FakeResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-            self.get_calls.set(self.get_calls.get() + 1);
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            if method != HttpMethod::Post {
+                return futures::future::Either::Left(async {
+                    Err(error::Error::Unknow(
+                        "GET is not used in this test".to_string(),
+                    ))
+                });
+            }
 
-            async {
-                Ok(FakeResponse::json(
-                    200,
-                    r#"{"results":[{"statement_id":0,"series":null}]}"#,
-                ))
+            self.requests.set(self.requests.get() + 1);
+            let response = self.response.clone();
+            self.last_request.replace(Some(RecordedRequest {
+                method: "POST",
+                url: request.url().to_string(),
+                bearer_token: request.bearer_token().map(str::to_owned),
+                body: request.body().map(str::to_owned),
+            }));
+
+            futures::future::Either::Right(async move { Ok(response) })
+        }
+    }
+
+    impl BorrowHttpClient for BorrowingQueryGetHttpClient {
+        type Response = FakeResponse;
+
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            if method == HttpMethod::Get {
+                self.get_calls.set(self.get_calls.get() + 1);
+            }
+
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(FakeResponse::json(
+                        200,
+                        r#"{"results":[{"statement_id":0,"series":null}]}"#,
+                    )),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
             }
         }
+    }
 
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
+    impl BorrowHttpClient for SplitQueryHttpClient {
+        type Response = FakeResponse;
+
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            match method {
+                HttpMethod::Get => self.get_calls.set(self.get_calls.get() + 1),
+                HttpMethod::Post => self.post_calls.set(self.post_calls.get() + 1),
+            }
+
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(FakeResponse::json(
+                        200,
+                        &format!(
+                            r#"{{"results":[{{"statement_id":0,"value":"{}"}}]}}"#,
+                            self.response_body
+                        ),
+                    )),
+                    HttpMethod::Post => Ok(FakeResponse::json(200, r#"{"results":[]}"#)),
+                }
+            }
         }
     }
 
     impl HttpClient for SplitQueryHttpClient {
         type Response = FakeResponse;
 
-        fn get(
+        fn send(
             &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-            self.get_calls.set(self.get_calls.get() + 1);
-
-            async {
-                Ok(FakeResponse::json(
-                    200,
-                    &format!(
-                        r#"{{"results":[{{"statement_id":0,"value":"{}"}}]}}"#,
-                        self.response_body
-                    ),
-                ))
-            }
-        }
-
-        fn post(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
-            self.post_calls.set(self.post_calls.get() + 1);
-            async { Ok(FakeResponse::json(200, r#"{"results":[]}"#)) }
-        }
-    }
-
-    impl QueryHttpClient for SplitQueryHttpClient {
-        fn send_get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
+            method: HttpMethod,
+            _request: HttpRequest<'static>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<>
+        {
             let response_body = self.response_body.clone();
 
             async move {
-                Ok(FakeResponse::json(
-                    200,
-                    &format!(
-                        r#"{{"results":[{{"statement_id":0,"value":"{}"}}]}}"#,
-                        response_body
-                    ),
-                ))
+                match method {
+                    HttpMethod::Get => Ok(FakeResponse::json(
+                        200,
+                        &format!(
+                            r#"{{"results":[{{"statement_id":0,"value":"{}"}}]}}"#,
+                            response_body
+                        ),
+                    )),
+                    HttpMethod::Post => Ok(FakeResponse::json(200, r#"{"results":[]}"#)),
+                }
             }
-        }
-
-        fn send_post(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-            let response = FakeResponse::json(200, r#"{"results":[]}"#);
-            async move { Ok(response) }
         }
     }
 
-    impl HttpResponse for NonSendResponse {
+    impl BorrowHttpResponse for NonSendResponse {
         fn status(&self) -> u16 {
             self.status
         }
@@ -1732,31 +2104,31 @@ mod tests {
         }
     }
 
-    impl HttpClient for NonSendResponseHttpClient {
+    impl BorrowHttpClient for NonSendResponseHttpClient {
         type Response = NonSendResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let body = self.response_body.clone();
 
             async move {
-                Ok(NonSendResponse {
-                    status: 200,
-                    body: Rc::new(body),
-                })
+                match method {
+                    HttpMethod::Get => Ok(NonSendResponse {
+                        status: 200,
+                        body: Rc::new(body),
+                    }),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
             }
-        }
-
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
         }
     }
 
-    impl HttpResponse for NonSendBodyFutureResponse {
+    impl BorrowHttpResponse for NonSendBodyFutureResponse {
         fn status(&self) -> u16 {
             self.status
         }
@@ -1787,31 +2159,31 @@ mod tests {
         }
     }
 
-    impl HttpClient for NonSendBodyFutureHttpClient {
+    impl BorrowHttpClient for NonSendBodyFutureHttpClient {
         type Response = NonSendBodyFutureResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let body = self.response_body.clone();
 
             async move {
-                Ok(NonSendBodyFutureResponse {
-                    status: 200,
-                    body: Rc::new(body),
-                })
+                match method {
+                    HttpMethod::Get => Ok(NonSendBodyFutureResponse {
+                        status: 200,
+                        body: Rc::new(body),
+                    }),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
             }
-        }
-
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
         }
     }
 
-    impl HttpResponse for VersionHeaderResponse {
+    impl BorrowHttpResponse for VersionHeaderResponse {
         fn status(&self) -> u16 {
             self.status
         }
@@ -1848,13 +2220,14 @@ mod tests {
         }
     }
 
-    impl HttpClient for VersionHeaderHttpClient {
+    impl BorrowHttpClient for VersionHeaderHttpClient {
         type Response = VersionHeaderResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let response = VersionHeaderResponse {
                 status: self.response.status,
                 version_header: match &self.response.version_header {
@@ -1864,17 +2237,18 @@ mod tests {
                 },
             };
 
-            async move { Ok(response) }
-        }
-
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(response),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
+            }
         }
     }
 
-    impl HttpResponse for ChunkedFakeResponse {
+    impl BorrowHttpResponse for ChunkedFakeResponse {
         fn status(&self) -> u16 {
             self.status
         }
@@ -1903,7 +2277,7 @@ mod tests {
         }
     }
 
-    impl ChunkedHttpResponse for ChunkedFakeResponse {
+    impl BorrowChunkedHttpResponse for ChunkedFakeResponse {
         type Stream = futures::stream::Iter<
             std::iter::Map<std::vec::IntoIter<Vec<u8>>, fn(Vec<u8>) -> Result<Bytes, error::Error>>,
         >;
@@ -1919,20 +2293,87 @@ mod tests {
         }
     }
 
-    impl QueryHttpResponse for ChunkedFakeResponse {
-        async fn json_send<T>(self) -> Result<T, error::Error>
+    impl HttpResponse for ChunkedFakeResponse {
+        fn status(&self) -> u16 {
+            self.status
+        }
+
+        fn header(&self, _name: &str) -> Result<Option<&str>, error::Error> {
+            Ok(None)
+        }
+
+        async fn text(self) -> Result<String, error::Error> {
+            Err(error::Error::Unknow(
+                "text is not used in this test".to_string(),
+            ))
+        }
+
+        async fn bytes(self) -> Result<Bytes, error::Error> {
+            panic!("chunked query should not eagerly buffer the whole response body")
+        }
+
+        async fn json<T>(self) -> Result<T, error::Error>
         where
             T: DeserializeOwned + 'static,
         {
             Err(error::Error::Unknow(
-                "json_send is not used in this test".to_string(),
+                "json is not used in this test".to_string(),
             ))
         }
     }
 
-    impl QueryChunkedHttpResponse for ChunkedFakeResponse {
-        async fn into_chunk_stream_send(self) -> Result<Self::Stream, error::Error> {
-            self.into_chunk_stream().await
+    impl ChunkedHttpResponse for ChunkedFakeResponse {
+        type Stream = futures::stream::Iter<
+            std::iter::Map<std::vec::IntoIter<Vec<u8>>, fn(Vec<u8>) -> Result<Bytes, error::Error>>,
+        >;
+
+        async fn into_chunk_stream(self) -> Result<Self::Stream, error::Error> {
+            BorrowChunkedHttpResponse::into_chunk_stream(self).await
+        }
+    }
+
+    impl HttpResponse for OwnedOnlyChunkedResponse {
+        fn status(&self) -> u16 {
+            self.status
+        }
+
+        fn header(&self, _name: &str) -> Result<Option<&str>, error::Error> {
+            Ok(None)
+        }
+
+        async fn text(self) -> Result<String, error::Error> {
+            Err(error::Error::Unknow(
+                "text is not used in this test".to_string(),
+            ))
+        }
+
+        async fn bytes(self) -> Result<Bytes, error::Error> {
+            panic!("chunked query should not eagerly buffer the whole response body")
+        }
+
+        async fn json<T>(self) -> Result<T, error::Error>
+        where
+            T: DeserializeOwned + 'static,
+        {
+            Err(error::Error::Unknow(
+                "json is not used in this test".to_string(),
+            ))
+        }
+    }
+
+    impl ChunkedHttpResponse for OwnedOnlyChunkedResponse {
+        type Stream = futures::stream::Iter<
+            std::iter::Map<std::vec::IntoIter<Vec<u8>>, fn(Vec<u8>) -> Result<Bytes, error::Error>>,
+        >;
+
+        async fn into_chunk_stream(self) -> Result<Self::Stream, error::Error> {
+            fn into_bytes(segment: Vec<u8>) -> Result<Bytes, error::Error> {
+                Ok(Bytes::from(segment))
+            }
+
+            Ok(futures::stream::iter(self.segments.into_iter().map(
+                into_bytes as fn(Vec<u8>) -> Result<Bytes, error::Error>,
+            )))
         }
     }
 
@@ -1948,57 +2389,102 @@ mod tests {
         }
     }
 
+    impl OwnedOnlyHttpClient {
+        fn new(responses: Vec<OwnedOnlyResponse>) -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(Vec::new())),
+                responses: Arc::new(Mutex::new(responses.into_iter().rev().collect())),
+            }
+        }
+
+        fn take_requests(&self) -> Vec<RecordedRequest> {
+            self.requests.lock().unwrap().clone()
+        }
+
+        fn record_with(
+            requests: Arc<Mutex<Vec<RecordedRequest>>>,
+            responses: Arc<Mutex<Vec<OwnedOnlyResponse>>>,
+            method: &'static str,
+            request: HttpRequest<'static>,
+        ) -> Result<OwnedOnlyResponse, error::Error> {
+            requests.lock().unwrap().push(RecordedRequest {
+                method,
+                url: request.url().to_string(),
+                bearer_token: request.bearer_token().map(str::to_owned),
+                body: request.body().map(str::to_owned),
+            });
+
+            responses
+                .lock()
+                .unwrap()
+                .pop()
+                .ok_or_else(|| error::Error::Unknow("missing fake response".to_string()))
+        }
+    }
+
+    impl OwnedOnlyChunkedHttpClient {
+        fn new(response: OwnedOnlyChunkedResponse) -> Self {
+            Self { response }
+        }
+    }
+
+    impl BorrowHttpClient for ChunkedHttpClient {
+        type Response = ChunkedFakeResponse;
+
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
+            let response = self.response.clone();
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(response),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
+            }
+        }
+    }
+
     impl HttpClient for ChunkedHttpClient {
         type Response = ChunkedFakeResponse;
 
-        fn get(
+        fn send(
             &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+            method: HttpMethod,
+            _request: HttpRequest<'static>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static + use<>
+        {
             let response = self.response.clone();
-            async move { Ok(response) }
-        }
-
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
-        }
-    }
-
-    impl QueryHttpClient for ChunkedHttpClient {
-        fn send_get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
-            let response = self.response.clone();
-            async move { Ok(response) }
-        }
-
-        fn send_post(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> + Send + 'static {
             let error = error::Error::Unknow("POST is not used in this test".to_string());
-            async move { Err(error) }
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(response),
+                    HttpMethod::Post => Err(error),
+                }
+            }
         }
     }
 
-    impl HttpClient for BorrowingChunkedHttpClient {
+    impl BorrowHttpClient for BorrowingChunkedHttpClient {
         type Response = ChunkedFakeResponse;
 
-        fn get(
-            &self,
-            _request: HttpRequest,
-        ) -> impl Future<Output = Result<Self::Response, error::Error>> {
+        fn send<'a>(
+            &'a self,
+            method: HttpMethod,
+            _request: HttpRequest<'a>,
+        ) -> impl Future<Output = Result<Self::Response, error::Error>> + use<'a> {
             let response = self.response.clone();
-            async move { Ok(response) }
-        }
-
-        async fn post(&self, _request: HttpRequest) -> Result<Self::Response, error::Error> {
-            Err(error::Error::Unknow(
-                "POST is not used in this test".to_string(),
-            ))
+            async move {
+                match method {
+                    HttpMethod::Get => Ok(response),
+                    HttpMethod::Post => Err(error::Error::Unknow(
+                        "POST is not used in this test".to_string(),
+                    )),
+                }
+            }
         }
     }
 
@@ -2038,7 +2524,7 @@ mod tests {
     }
 
     #[test]
-    fn ping_preserves_jwt_token() {
+    fn ping_borrow_preserves_jwt_token() {
         let http_client = RecordingHttpClient::new(vec![FakeResponse::empty(204)]);
         let client = Client::new_with_client(
             Url::parse("http://localhost:8086").unwrap(),
@@ -2047,7 +2533,7 @@ mod tests {
         )
         .set_jwt_token("jwt-token");
 
-        let ping = block_on(client.ping());
+        let ping = block_on(client.ping_borrow());
 
         assert!(ping);
 
@@ -2059,7 +2545,7 @@ mod tests {
     }
 
     #[test]
-    fn get_version_preserves_jwt_token() {
+    fn get_version_borrow_preserves_jwt_token() {
         let http_client = RecordingHttpClient::new(vec![FakeResponse {
             status: 204,
             headers: HashMap::from([("X-Influxdb-Version".to_string(), "1.8.10".to_string())]),
@@ -2072,7 +2558,7 @@ mod tests {
         )
         .set_jwt_token("jwt-token");
 
-        let version = block_on(client.get_version());
+        let version = block_on(client.get_version_borrow());
 
         assert_eq!(version.as_deref(), Some("1.8.10"));
 
@@ -2357,6 +2843,35 @@ mod tests {
     }
 
     #[test]
+    fn write_point_future_does_not_borrow_point_fields() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            RecordingHttpClient::new(vec![FakeResponse::empty(204)]),
+        );
+        let host = String::from("edge-a");
+        let point = Point::new("cpu")
+            .add_tag("host", host.as_str())
+            .add_field("value", 1)
+            .add_timestamp(42);
+        let future = client.write_point(point, Some(Precision::Seconds), None);
+
+        drop(host);
+
+        block_on(async {
+            tokio::spawn(future).await.unwrap().unwrap();
+        });
+
+        let requests = client.client.take_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(
+            requests[0].body.as_deref(),
+            Some("cpu,host=edge-a value=1i 42\n")
+        );
+    }
+
+    #[test]
     fn query_can_be_spawned_with_cloneable_http_client() {
         let client = Client::new_with_client(
             Url::parse("http://localhost:8086").unwrap(),
@@ -2373,6 +2888,27 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
+            assert_eq!(result.unwrap()[0].statement_id, Some(0));
+        });
+    }
+
+    #[test]
+    fn owned_query_future_does_not_borrow_sql_input() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            RecordingHttpClient::new(vec![FakeResponse::json(
+                200,
+                r#"{"results":[{"statement_id":0,"series":null}]}"#,
+            )]),
+        );
+        let sql = String::from("select value from cpu");
+        let future = client.query(sql.as_str(), None);
+
+        drop(sql);
+
+        block_on(async {
+            let result = tokio::spawn(future).await.unwrap().unwrap();
             assert_eq!(result.unwrap()[0].statement_id, Some(0));
         });
     }
@@ -2398,13 +2934,14 @@ mod tests {
         );
 
         let response: NonSendQueryResult = block_on(async {
-            client
-                .send_request_borrow("select value from cpu", None, false)
-                .await
-                .unwrap()
-                .json::<NonSendQueryResult>()
-                .await
-                .unwrap()
+            BorrowHttpResponse::json(
+                client
+                    .send_request_borrow("select value from cpu", None, false)
+                    .await
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
         });
 
         assert_eq!(
@@ -2439,14 +2976,15 @@ mod tests {
             BorrowingPostHttpClient::new(),
         );
 
-        let query = block_on(async {
-            client
-                .send_request_borrow("create database metrics", None, false)
-                .await
-                .unwrap()
-                .json::<Query>()
-                .await
-                .unwrap()
+        let query: Query = block_on(async {
+            BorrowHttpResponse::json(
+                client
+                    .send_request_borrow("create database metrics", None, false)
+                    .await
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
         });
 
         assert_eq!(query.results, Some(Vec::new()));
@@ -2465,6 +3003,84 @@ mod tests {
 
         assert_eq!(result, Some(Vec::new()));
         assert_eq!(client.client.post_calls.get(), 1);
+    }
+
+    #[test]
+    fn write_point_borrow_supports_non_spawn_http_clients() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            BorrowingWriteHttpClient::new(),
+        )
+        .set_jwt_token("jwt-token");
+        let point = Point::new("cpu").add_field("value", 1).add_timestamp(42);
+
+        block_on(client.write_point_borrow(point, Some(Precision::Seconds), None)).unwrap();
+
+        assert_eq!(client.client.requests.get(), 1);
+        let request = client.client.last_request.borrow().clone().unwrap();
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.bearer_token.as_deref(), Some("jwt-token"));
+        assert_eq!(request.body.as_deref(), Some("cpu value=1i 42\n"));
+        assert!(request.url.contains("precision=s"));
+    }
+
+    #[test]
+    fn write_points_borrow_serializes_multiple_points() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            BorrowingWriteHttpClient::new(),
+        );
+        let points = vec![
+            Point::new("cpu").add_field("value", 1).add_timestamp(42),
+            Point::new("mem").add_field("value", 2).add_timestamp(43),
+        ];
+
+        block_on(client.write_points_borrow(points, None, None)).unwrap();
+
+        assert_eq!(client.client.requests.get(), 1);
+        let request = client.client.last_request.borrow().clone().unwrap();
+        assert_eq!(
+            request.body.as_deref(),
+            Some("cpu value=1i 42\nmem value=2i 43\n")
+        );
+        assert!(request.url.contains("precision=n"));
+    }
+
+    #[test]
+    fn write_point_maps_database_missing_for_owned_transports() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            RecordingHttpClient::new(vec![FakeResponse::json(404, r#""missing db""#)]),
+        );
+        let point = Point::new("cpu").add_field("value", 1).add_timestamp(42);
+
+        let err = block_on(client.write_point(point, Some(Precision::Seconds), None)).unwrap_err();
+
+        assert_eq!(
+            err,
+            error::Error::DataBaseDoesNotExist("missing db".to_string())
+        );
+    }
+
+    #[test]
+    fn write_point_borrow_maps_retention_policy_missing() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            BorrowingWriteHttpClient::with_response(FakeResponse::json(500, "rp missing")),
+        );
+        let point = Point::new("cpu").add_field("value", 1).add_timestamp(42);
+
+        let err =
+            block_on(client.write_point_borrow(point, Some(Precision::Seconds), None)).unwrap_err();
+
+        assert_eq!(
+            err,
+            error::Error::RetentionPolicyDoesNotExist("rp missing".to_string())
+        );
     }
 
     #[test]
@@ -2605,7 +3221,7 @@ mod tests {
             }),
         );
 
-        let version = block_on(client.get_version());
+        let version = block_on(client.get_version_borrow());
 
         assert_eq!(version, None);
     }
@@ -2621,7 +3237,7 @@ mod tests {
             }),
         );
 
-        let version = block_on(client.get_version());
+        let version = block_on(client.get_version_borrow());
 
         assert_eq!(version.as_deref(), Some("Don't know"));
     }
@@ -2637,8 +3253,106 @@ mod tests {
             }),
         );
 
+        let version = block_on(client.get_version_borrow());
+
+        assert_eq!(version.as_deref(), Some("1.8.10"));
+    }
+
+    #[test]
+    fn owned_http_client_ping_uses_spawn_safe_transport() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            OwnedOnlyHttpClient::new(vec![OwnedOnlyResponse::empty(204)]),
+        )
+        .set_jwt_token("jwt-token");
+
+        let ping = block_on(client.ping());
+
+        assert!(ping);
+
+        let requests = client.client.take_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(requests[0].bearer_token.as_deref(), Some("jwt-token"));
+        assert!(requests[0].url.contains("/ping"));
+    }
+
+    #[test]
+    fn owned_http_client_get_version_uses_spawn_safe_transport() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            OwnedOnlyHttpClient::new(vec![OwnedOnlyResponse::with_header(
+                204,
+                "X-Influxdb-Version",
+                "1.8.10",
+            )]),
+        );
+
         let version = block_on(client.get_version());
 
         assert_eq!(version.as_deref(), Some("1.8.10"));
+
+        let requests = client.client.take_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "GET");
+        assert!(requests[0].url.contains("/ping"));
+    }
+
+    #[test]
+    fn owned_chunked_query_only_needs_owned_chunked_traits() {
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            OwnedOnlyChunkedHttpClient::new(OwnedOnlyChunkedResponse {
+                status: 200,
+                segments: vec![
+                    br#"{"results":[{"statement_id":0"#.to_vec(),
+                    br#","series":null}]}"#.to_vec(),
+                ],
+            }),
+        );
+
+        block_on(async {
+            let mut query = client
+                .query_chunked("select value from cpu", None)
+                .await
+                .unwrap();
+            let first = query.next().await.unwrap().unwrap();
+
+            assert_eq!(first.results.unwrap()[0].statement_id, Some(0));
+            assert!(query.next().await.is_none());
+        });
+    }
+
+    #[test]
+    fn owned_http_client_can_back_query_and_write_apis_without_extra_traits() {
+        let http_client = OwnedOnlyHttpClient::new(vec![
+            OwnedOnlyResponse::json(200, r#"{"results":[{"statement_id":0,"series":null}]}"#),
+            OwnedOnlyResponse::empty(204),
+        ]);
+        let client = Client::new_with_client(
+            Url::parse("http://localhost:8086").unwrap(),
+            "metrics",
+            http_client,
+        );
+        let point = Point::new("cpu").add_field("value", 1).add_timestamp(42);
+
+        block_on(async {
+            let result = client.query("select value from cpu", None).await.unwrap();
+            assert_eq!(result.unwrap()[0].statement_id, Some(0));
+
+            client
+                .write_point(point, Some(Precision::Seconds), None)
+                .await
+                .unwrap();
+        });
+
+        let requests = client.client.take_requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(requests[1].method, "POST");
+        assert_eq!(requests[1].body.as_deref(), Some("cpu value=1i 42\n"));
     }
 }

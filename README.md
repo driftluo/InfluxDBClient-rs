@@ -62,15 +62,18 @@ fn main() {
 
 `Client` defaults to `reqwest::Client` when the default `reqwest` feature is enabled,
 but it is generic over the HTTP implementation.
-If you need a custom transport, implement `HttpClient` and `HttpResponse`, then create it with
-`Client::new_with_client(...)`.
-Borrowing query APIs such as `query_borrow`, `query_chunked_borrow`, and the corresponding
-query-backed `*_borrow` management APIs only require those base traits.
-Owned query APIs such as `query`, `query_chunked`, and the query-backed management commands require
-`QueryHttpClient` and `QueryHttpResponse`. Owned chunked queries also require
-`QueryChunkedHttpResponse`.
-If the transport also needs to support write APIs, implement `WriteHttpClient` and
-`WriteHttpResponse` as well. Chunked responses now expose an async byte stream rather than a
+If you need a custom transport, implement the transport traits for the APIs you want to support,
+then create it with `Client::new_with_client(...)`.
+Borrowing APIs such as `ping_borrow`, `get_version_borrow`, `query_borrow`,
+`query_chunked_borrow`, `write_point_borrow`, `write_points_borrow`, and the corresponding
+query-backed `*_borrow` management APIs require `BorrowHttpClient` and `BorrowHttpResponse`.
+Borrowed chunked queries also require `BorrowChunkedHttpResponse`. Spawn-safe APIs such as `ping`,
+`get_version`, `query`, `query_chunked`, `write_point`, `write_points`, and the query-backed
+management commands require `HttpClient` and `HttpResponse`. Spawn-safe chunked queries also
+require `ChunkedHttpResponse`. You can implement borrowed-only, spawn-safe-only, or both modes on the same
+transport type.
+Borrowing APIs use borrowed `HttpRequest` data, while spawnable query/write APIs receive owned
+`HttpRequest<'static>` values. Chunked responses now expose an async byte stream rather than a
 blocking reader.
 
 `query_chunked` is an incompatible API change in this release: it now returns an async stream

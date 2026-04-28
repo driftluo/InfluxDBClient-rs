@@ -43,13 +43,19 @@
 //!
 //! `Client` defaults to `reqwest::Client` when the default `reqwest` feature is enabled,
 //! but it is generic over the HTTP implementation.
-//! Implement [`HttpClient`] and [`HttpResponse`] to plug in a custom transport with
-//! [`Client::new_with_client`]. Borrowing query APIs such as [`Client::query_borrow`] and
-//! [`Client::query_chunked_borrow`] only require those base traits. Owned query APIs such as
-//! [`Client::query`], [`Client::query_chunked`], and the query-backed management commands require
-//! [`QueryHttpClient`] and [`QueryHttpResponse`]. Owned chunked queries also require
-//! [`QueryChunkedHttpResponse`]. Custom transports that need write APIs should additionally
-//! implement [`WriteHttpClient`] for their client type.
+//! Implement the transport traits for the APIs you want to support, then plug the transport into
+//! [`Client::new_with_client`]. Borrowing APIs such as [`Client::ping_borrow`],
+//! [`Client::get_version_borrow`], [`Client::query_borrow`], [`Client::query_chunked_borrow`],
+//! [`Client::write_point_borrow`], and [`Client::write_points_borrow`] require [`BorrowHttpClient`]
+//! and [`BorrowHttpResponse`]. Borrowed chunked queries also require
+//! [`BorrowChunkedHttpResponse`]. Spawn-safe APIs such as [`Client::ping`],
+//! [`Client::get_version`], [`Client::query`], [`Client::query_chunked`],
+//! [`Client::write_point`], and [`Client::write_points`] plus the query-backed management
+//! commands require [`HttpClient`] and [`HttpResponse`]. Spawn-safe chunked queries also require
+//! [`ChunkedHttpResponse`]. You can implement borrowed-only, spawn-safe-only, or both modes on
+//! the same transport type.
+//! Borrowing APIs pass borrowed [`HttpRequest`] data through the borrow transport traits, while
+//! the spawnable query/write APIs pass owned `HttpRequest<'static>` values.
 //! Chunked responses now yield an async byte stream instead of a blocking reader.
 //! Disable default features if you want to avoid compiling `reqwest` and provide your own
 //! HTTP client.
@@ -61,6 +67,12 @@
 //! `query_chunked` is also an incompatible change now: it returns an async [`futures::Stream`]
 //! instead of a synchronous iterator. Import `futures::StreamExt` to consume it with
 //! `.next().await`.
+//!
+//! ```rust,compile_fail
+//! use influx_db_client::{
+//!     QueryChunkedHttpResponse, QueryHttpClient, QueryHttpResponse, WriteHttpClient,
+//! };
+//! ```
 //!
 //! ### udp
 //!
@@ -92,8 +104,8 @@ pub(crate) mod serialization;
 pub use client::{Client, UdpClient};
 pub use error::Error;
 pub use http::{
-    ChunkedHttpResponse, HttpClient, HttpRequest, HttpResponse, QueryChunkedHttpResponse,
-    QueryHttpClient, QueryHttpResponse, WriteHttpClient,
+    BorrowChunkedHttpResponse, BorrowHttpClient, BorrowHttpResponse, ChunkedHttpResponse,
+    HttpClient, HttpMethod, HttpRequest, HttpResponse,
 };
 pub use keys::{ChunkedQuery, Node, Point, Points, Precision, Query, Series, Value};
 pub use url::Url;
