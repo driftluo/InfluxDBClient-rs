@@ -39,6 +39,7 @@ impl From<io::Error> for Error {
     }
 }
 
+#[cfg(feature = "reqwest")]
 impl From<reqwest::Error> for Error {
     fn from(err: reqwest::Error) -> Self {
         Error::Communication(format!("{}", err))

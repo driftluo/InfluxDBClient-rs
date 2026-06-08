@@ -1,5 +1,5 @@
 use crate::{Point, Value};
-use std::borrow::Borrow;
+use std::{borrow::Borrow, fmt::Write as _};
 
 /// Resolve the points to line protocol format
 pub(crate) fn line_serialization<'a>(
@@ -9,24 +9,18 @@ pub(crate) fn line_serialization<'a>(
 
     for point in points {
         let point: &Point = point.borrow();
-        line.push_str(&escape_measurement(&point.measurement));
+        push_escaped_measurement(&mut line, &point.measurement);
 
         for (tag, value) in &point.tags {
             line.push(',');
-            line.push_str(&escape_keys_and_tags(tag));
+            push_escaped_keys_and_tags(&mut line, tag);
             line.push('=');
 
             match value {
-                Value::String(s) => line.push_str(&escape_keys_and_tags(s)),
-                Value::Float(f) => line.push_str(f.to_string().as_str()),
-                Value::Integer(i) => line.push_str(i.to_string().as_str()),
-                Value::Boolean(b) => line.push_str({
-                    if *b {
-                        "true"
-                    } else {
-                        "false"
-                    }
-                }),
+                Value::String(s) => push_escaped_keys_and_tags(&mut line, s),
+                Value::Float(f) => push_display(&mut line, f),
+                Value::Integer(i) => push_display(&mut line, i),
+                Value::Boolean(b) => line.push_str(bool_str(*b)),
             }
         }
 
@@ -41,28 +35,23 @@ pub(crate) fn line_serialization<'a>(
                     ','
                 }
             });
-            line.push_str(&escape_keys_and_tags(field));
+            push_escaped_keys_and_tags(&mut line, field);
             line.push('=');
 
             match value {
-                Value::String(s) => {
-                    line.push_str(&escape_string_field_value(&s.replace("\\\"", "\\\\\"")))
+                Value::String(s) => push_escaped_string_field_value(&mut line, s),
+                Value::Float(f) => push_display(&mut line, f),
+                Value::Integer(i) => {
+                    push_display(&mut line, i);
+                    line.push('i')
                 }
-                Value::Float(f) => line.push_str(&f.to_string()),
-                Value::Integer(i) => line.push_str(&format!("{i}i")),
-                Value::Boolean(b) => line.push_str({
-                    if *b {
-                        "true"
-                    } else {
-                        "false"
-                    }
-                }),
+                Value::Boolean(b) => line.push_str(bool_str(*b)),
             }
         }
 
         if let Some(t) = point.timestamp {
             line.push(' ');
-            line.push_str(&t.to_string());
+            push_display(&mut line, t);
         }
 
         line.push('\n')
@@ -73,53 +62,133 @@ pub(crate) fn line_serialization<'a>(
 
 #[inline]
 pub(crate) fn quote_ident(value: &str) -> String {
-    format!(
-        "\"{}\"",
-        value
-            .replace('\\', "\\\\")
-            .replace('\"', "\\\"")
-            .replace('\n', "\\n")
-    )
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' | '"' => {
+                quoted.push('\\');
+                quoted.push(ch);
+            }
+            '\n' => quoted.push_str("\\n"),
+            _ => quoted.push(ch),
+        }
+    }
+    quoted.push('"');
+    quoted
 }
 
 #[inline]
 pub(crate) fn quote_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('\'');
+    for ch in value.chars() {
+        match ch {
+            '\\' | '\'' => {
+                quoted.push('\\');
+                quoted.push(ch);
+            }
+            _ => quoted.push(ch),
+        }
+    }
+    quoted.push('\'');
+    quoted
 }
 
 #[inline]
 pub(crate) fn conversion(value: &str) -> String {
-    value
-        .replace('\'', "")
-        .replace('\"', "")
-        .replace('\\', "")
-        .trim()
-        .to_string()
+    let mut converted = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if !matches!(ch, '\'' | '"' | '\\') {
+            converted.push(ch);
+        }
+    }
+
+    let trimmed = converted.trim();
+    if trimmed.len() == converted.len() {
+        converted
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[inline]
-fn escape_keys_and_tags(value: impl AsRef<str>) -> String {
-    value
-        .as_ref()
-        .replace(',', "\\,")
-        .replace('=', "\\=")
-        .replace(' ', "\\ ")
+fn bool_str(value: bool) -> &'static str {
+    if value { "true" } else { "false" }
 }
 
 #[inline]
-fn escape_measurement(value: &str) -> String {
-    value.replace(',', "\\,").replace(' ', "\\ ")
+fn push_display(buffer: &mut String, value: impl std::fmt::Display) {
+    write!(buffer, "{value}").expect("writing to a string cannot fail");
 }
 
 #[inline]
-fn escape_string_field_value(value: &str) -> String {
-    format!("\"{}\"", value.replace('\"', "\\\""))
+fn push_escaped_keys_and_tags(buffer: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            ',' | '=' | ' ' => {
+                buffer.push('\\');
+                buffer.push(ch);
+            }
+            _ => buffer.push(ch),
+        }
+    }
+}
+
+#[inline]
+fn push_escaped_measurement(buffer: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            ',' | ' ' => {
+                buffer.push('\\');
+                buffer.push(ch);
+            }
+            _ => buffer.push(ch),
+        }
+    }
+}
+
+#[inline]
+fn push_escaped_string_field_value(buffer: &mut String, value: &str) {
+    buffer.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' | '"' => {
+                buffer.push('\\');
+                buffer.push(ch);
+            }
+            _ => buffer.push(ch),
+        }
+    }
+    buffer.push('"');
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{Point, Points};
+
+    #[inline]
+    fn escape_keys_and_tags(value: impl AsRef<str>) -> String {
+        let value = value.as_ref();
+        let mut escaped = String::with_capacity(value.len());
+        push_escaped_keys_and_tags(&mut escaped, value);
+        escaped
+    }
+
+    #[inline]
+    fn escape_measurement(value: &str) -> String {
+        let mut escaped = String::with_capacity(value.len());
+        push_escaped_measurement(&mut escaped, value);
+        escaped
+    }
+
+    #[inline]
+    fn escape_string_field_value(value: &str) -> String {
+        let mut escaped = String::with_capacity(value.len() + 2);
+        push_escaped_string_field_value(&mut escaped, value);
+        escaped
+    }
 
     #[test]
     fn line_serialization_test() {
@@ -150,6 +219,26 @@ mod test {
     #[test]
     fn escape_string_field_value_test() {
         assert_eq!(escape_string_field_value("\"foo"), "\"\\\"foo\"")
+    }
+
+    #[test]
+    fn escape_string_field_value_escapes_backslashes() {
+        let point = Point::new("test").add_field("path", r"C:\tmp");
+        let points = Points::new(point);
+
+        assert_eq!(line_serialization(&points), "test path=\"C:\\\\tmp\"\n");
+    }
+
+    #[test]
+    fn line_serialization_preserves_point_order_when_consuming_points() {
+        let first = Point::new("first").add_field("value", 1);
+        let second = Point::new("second").add_field("value", 2);
+        let points = Points::create_new(vec![first, second]);
+
+        assert_eq!(
+            line_serialization(points),
+            "first value=1i\nsecond value=2i\n"
+        );
     }
 
     #[test]

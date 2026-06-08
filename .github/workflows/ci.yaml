@@ -1,10 +1,10 @@
 name: Github Action
 
 on:
-  pull_request:  # trigger on pull requests
+  pull_request: # trigger on pull requests
   push:
     branches:
-      - master    # trigger on push to master
+      - master # trigger on push to master
       - ci
 
 jobs:
@@ -22,5 +22,5 @@ jobs:
           wget https://dl.influxdata.com/influxdb/releases/influxdb_1.8.0_amd64.deb
           sudo dpkg -i influxdb_1.8.0_amd64.deb
           sudo /usr/bin/influxd > $HOME/influx.log 2>&1 &
-          cargo test
+          RUST_BACKTRACE=1 cargo test
           cat $HOME/influx.log

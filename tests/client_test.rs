@@ -1,4 +1,6 @@
-use influx_db_client::{point, points, reqwest::Url, Client, Point, Points, Precision, UdpClient};
+#![cfg(feature = "reqwest")]
+
+use influx_db_client::{Client, Point, Points, Precision, UdpClient, Url, point, points, reqwest};
 use std::fs::File;
 use std::io::Read;
 use std::thread::sleep;
@@ -121,6 +123,9 @@ fn use_udp() {
         udp.add_host("127.0.0.1:8090".parse().unwrap());
         let mut client = Client::default().set_authentication("root", "root");
 
+        client.create_database("udp").await.unwrap();
+        client.create_database("telegraf").await.unwrap();
+
         let point = point!("test").add_field("foo", "bar");
 
         udp.write_point(point).unwrap();
@@ -143,13 +148,37 @@ fn use_https() {
 
     use tempdir::TempDir;
 
+    fn run_openssl(args: &[&str]) {
+        let output = Command::new("openssl")
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "openssl {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     // https://docs.influxdata.com/influxdb/v1.5/administration/https_setup/#setup-https-with-a-self-signed-certificate
     let dir = TempDir::new("test_use_https").unwrap();
     let dir_path: String = dir.path().to_str().unwrap().to_owned();
+    let ca_key_path: String = dir.path().join("test-ca.key").to_str().unwrap().to_owned();
+    let ca_cert_path: String = dir.path().join("test-ca.cert").to_str().unwrap().to_owned();
     let tls_key_filename = "influxdb-selfsigned.key";
     let tls_key_path: String = dir
         .path()
         .join(tls_key_filename)
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let tls_csr_path: String = dir
+        .path()
+        .join("influxdb-selfsigned.csr")
         .to_str()
         .unwrap()
         .to_owned();
@@ -160,27 +189,81 @@ fn use_https() {
         .to_str()
         .unwrap()
         .to_owned();
-    let output = Command::new("openssl")
-        .args(&[
-            "req",
-            "-x509",
-            "-nodes",
-            "-newkey",
-            "rsa:2048",
-            "-days",
-            "10",
-            "-subj",
-            "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=localhost",
-            "-keyout",
-            tls_key_path.as_str(),
-            "-out",
-            tls_cert_path.as_str(),
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
+    let tls_ext_path: String = dir
+        .path()
+        .join("influxdb-selfsigned.ext")
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    run_openssl(&[
+        "req",
+        "-x509",
+        "-nodes",
+        "-newkey",
+        "rsa:2048",
+        "-days",
+        "10",
+        "-sha256",
+        "-subj",
+        "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=InfluxDB Test CA",
+        "-addext",
+        "basicConstraints=critical,CA:TRUE",
+        "-addext",
+        "keyUsage=critical,keyCertSign,cRLSign",
+        "-addext",
+        "subjectKeyIdentifier=hash",
+        "-keyout",
+        ca_key_path.as_str(),
+        "-out",
+        ca_cert_path.as_str(),
+    ]);
+
+    run_openssl(&[
+        "req",
+        "-nodes",
+        "-newkey",
+        "rsa:2048",
+        "-subj",
+        "/C=GB/ST=London/L=London/O=Global Security/OU=IT Department/CN=localhost",
+        "-keyout",
+        tls_key_path.as_str(),
+        "-out",
+        tls_csr_path.as_str(),
+    ]);
+
+    let mut tls_ext_file = fs::File::create(tls_ext_path.as_str()).unwrap();
+    tls_ext_file
+        .write_all(
+            br#"basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:localhost,IP:127.0.0.1
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+"#,
+        )
         .unwrap();
-    println!("openssl output: {:?}", output);
+    drop(tls_ext_file);
+
+    run_openssl(&[
+        "x509",
+        "-req",
+        "-in",
+        tls_csr_path.as_str(),
+        "-CA",
+        ca_cert_path.as_str(),
+        "-CAkey",
+        ca_key_path.as_str(),
+        "-CAcreateserial",
+        "-days",
+        "10",
+        "-sha256",
+        "-extfile",
+        tls_ext_path.as_str(),
+        "-out",
+        tls_cert_path.as_str(),
+    ]);
 
     let influxdb_config_path: String = dir
         .path()
@@ -215,7 +298,17 @@ bind-address = "127.0.0.1:{rpc_port}"
     f.sync_all().unwrap();
     drop(f);
 
-    for path in [&tls_key_path, &tls_cert_path, &influxdb_config_path].iter() {
+    for path in [
+        &ca_key_path,
+        &ca_cert_path,
+        &tls_key_path,
+        &tls_csr_path,
+        &tls_cert_path,
+        &tls_ext_path,
+        &influxdb_config_path,
+    ]
+    .iter()
+    {
         assert!(fs::metadata(path).is_ok());
     }
 
@@ -230,7 +323,7 @@ bind-address = "127.0.0.1:{rpc_port}"
         thread::sleep(Duration::from_millis(500));
     }
 
-    let mut ca_cert_file = File::open(tls_cert_path.as_str()).unwrap();
+    let mut ca_cert_file = File::open(ca_cert_path.as_str()).unwrap();
     let mut ca_cert_buffer = Vec::new();
     ca_cert_file.read_to_end(&mut ca_cert_buffer).unwrap();
 
@@ -241,7 +334,31 @@ bind-address = "127.0.0.1:{rpc_port}"
         .build()
         .unwrap();
 
-    let host = format!("https://localhost:{}", http_port);
+    block_on(async {
+        let ping_url = format!("https://127.0.0.1:{http_port}/ping");
+        let mut last_error = None;
+
+        for _ in 0..20 {
+            match http_client.get(&ping_url).send().await {
+                Ok(response) if response.status() == 204 => return,
+                Ok(response) => {
+                    last_error = Some(format!("unexpected /ping status {}", response.status()));
+                }
+                Err(err) => {
+                    last_error = Some(format!("{err:?}"));
+                }
+            }
+
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        panic!(
+            "https influxdb server did not become ready: {}",
+            last_error.unwrap_or_else(|| "unknown error".to_string())
+        );
+    });
+
+    let host = format!("https://127.0.0.1:{}", http_port);
     let client = Client::new_with_client(
         Url::parse(host.as_str()).unwrap(),
         "test_use_https",
@@ -262,4 +379,5 @@ bind-address = "127.0.0.1:{rpc_port}"
     });
 
     influxdb_server.kill().unwrap();
+    influxdb_server.wait().unwrap();
 }

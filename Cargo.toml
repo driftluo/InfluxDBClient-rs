@@ -1,6 +1,6 @@
 [package]
 name = "influx_db_client"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["piaoliu <441594700@qq.com>"]
 documentation = "https://docs.rs/influx_db_client/"
 repository = "https://github.com/driftluo/InfluxDBClient-rs"
@@ -10,17 +10,22 @@ keywords = ["influxdb"]
 categories = ["database"]
 license = "MIT"
 include = ["Cargo.toml", "src/*.rs", "README.md", "LICENSE"]
-edition = "2018"
+edition = "2024"
+rust-version = "1.85"
 
 [badges]
 travis-ci = { repository = "driftluo/InfluxDBClient-rs" }
 
 [dependencies]
-reqwest = { version = "^0.12", default-features = false, features = ["json"] }
+reqwest = { version = "^0.13.2", optional = true, default-features = false, features = [
+    "json",
+    "stream",
+] }
 serde_json = '^1.0.2'
 serde = { version = "^1.0.15", features = ["derive"] }
 bytes = "^1"
 futures = "^0.3"
+url = "^2.5"
 
 [dev-dependencies]
 tempdir = "0.3"
@@ -28,11 +33,11 @@ tokio = { version = "1", features = ["full"] }
 
 
 [features]
-default = ["reqwest/default-tls"]
+default = ["reqwest", "reqwest/default-tls"]
+reqwest = ["dep:reqwest"]
 
 
-# For using rustls-tls (and no need for openssl anymore)
-rustls-tls = ["reqwest/rustls-tls"]
-rustls-tls-manual-roots = ["reqwest/rustls-tls-manual-roots"]
-rustls-tls-webpki-roots = ["reqwest/rustls-tls-webpki-roots"]
-rustls-tls-native-roots = ["reqwest/rustls-tls-native-roots"]
+# Explicit native-tls backend.
+native-tls = ["reqwest", "reqwest/native-tls"]
+native-tls-vendored = ["reqwest", "reqwest/native-tls-vendored"]
+native-tls-no-alpn = ["reqwest", "reqwest/native-tls-no-alpn"]
